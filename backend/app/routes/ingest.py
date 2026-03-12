@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
-from app.repositories.Sdata_repo import get_products_by_ids
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.repositories.Sdata_repo import get_products_by_ids, get_products_without_embeddings
+from app.repositories.embedding_repo import bulk_insert_embeddings
 from app.services.clip_service import CLIPService
 
 ingest_bp = Blueprint('ingest', __name__)
@@ -41,3 +43,42 @@ def Test():
     'text_similarity': textscore,
     'final_score': round(final_score, 4)
      }), 200
+
+
+# Batch size tuned for ViT-L-14 on CPU — 8 images per forward pass is a safe
+# balance between throughput and RAM usage (~2–3 GB peak per batch).
+BATCH_SIZE = 8
+
+
+@ingest_bp.route('/sync', methods=['POST'])
+@jwt_required()
+def sync_embeddings():
+    user_id = get_jwt_identity()
+
+    products = get_products_without_embeddings(limit=10)
+
+    if not products:
+        return jsonify({'message': 'All products already have embeddings', 'synced': 0}), 200
+
+    records = []
+
+    for i in range(0, len(products), BATCH_SIZE):
+        batch = products[i:i + BATCH_SIZE]
+
+        urls = [p.images[0].Url for p in batch]
+        texts = [clip.build_text_input(p) for p in batch]
+
+        image_vectors = clip.encode_images_batch(urls)
+        text_vectors = clip.encode_texts_batch(texts)
+
+        for product, img_vec, txt_vec in zip(batch, image_vectors, text_vectors):
+            records.append({
+                'SdataId': product.Id,
+                'UserId': user_id,
+                'ImageVector': img_vec,
+                'TextVector': txt_vec,
+            })
+
+    count = bulk_insert_embeddings(records)
+
+    return jsonify({'message': 'Sync complete', 'synced': count}), 200

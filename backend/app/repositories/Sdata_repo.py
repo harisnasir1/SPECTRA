@@ -1,6 +1,7 @@
 import uuid
 from app.extensions import db
 from app.models.product import Product
+from app.models.embedding import Embedding
 
 
 def get_products_by_ids(id1, id2):
@@ -22,3 +23,14 @@ def get_products_by_ids(id1, id2):
     products.sort(key=lambda p: id_order[str(p.Id)])
 
     return products
+
+
+def get_products_without_embeddings(limit=10):
+    return (
+        db.session.query(Product)
+        .outerjoin(Embedding, Product.Id == Embedding.SdataId)
+        .filter(Embedding.Id == None)
+        .filter(Product.images.any())
+        .limit(limit)
+        .all()
+    )
