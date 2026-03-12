@@ -50,4 +50,3 @@ docker-compose.*.yml
 *.pt
 *.pth
 *.bin
-models/

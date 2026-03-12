@@ -9,7 +9,7 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
     bcrypt.init_app(app)
-
+    
     from .routes.auth import auth_bp
     from .routes.products import products_bp
     from .routes.ingest import ingest_bp

@@ -26,12 +26,12 @@ interface Product {
 /* ── Mock data ── */
 
 const allProducts: Product[] = [
-  { id: 1, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Levi's Blue & Black Cross Patch Jeans", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 2, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Nike White & Silver Air Force 1 Sneakers", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 3, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Blue Jeans", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 4, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black Multicolor Cross Longsleeve T-Shirt", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: false },
-  { id: 5, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Matty Boy Red Form Mesh Jersey T-Shirt", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 6, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black & White T-Bar Logo Thermal Zip Up Hoodie", source: "Savonches", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
+  { id: 1, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Levi's Blue & Black Cross Patch Jeans", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
+  { id: 2, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Nike White & Silver Air Force 1 Sneakers", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
+  { id: 3, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Blue Jeans", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
+  { id: 4, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black Multicolor Cross Longsleeve T-Shirt", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: false },
+  { id: 5, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Matty Boy Red Form Mesh Jersey T-Shirt", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
+  { id: 6, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black & White T-Bar Logo Thermal Zip Up Hoodie", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
   { id: 7, image: null, brand: "EcoWear", name: "Organic Cotton T-Shirt White", source: "Shopify", lastUpdate: "2026-02-25 10:22", hasEmbedding: true },
   { id: 8, image: null, brand: "EcoWear", name: "Cotton Tee — White — Organic", source: "Shopify", lastUpdate: "2026-02-25 10:22", hasEmbedding: true },
   { id: 9, image: null, brand: "StrideMax", name: "Running Shoe V2 — Black/Red", source: "Shopify", lastUpdate: "2026-02-24 08:45", hasEmbedding: true },
