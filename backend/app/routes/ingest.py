@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.repositories.Sdata_repo import get_products_by_ids, get_products_without_embeddings
 from app.repositories.embedding_repo import bulk_insert_embeddings
 from app.services.clip_service import CLIPService
+from app.services.duplicate_service import detect_duplicates
 
 ingest_bp = Blueprint('ingest', __name__)
 clip = CLIPService()
@@ -55,7 +56,7 @@ BATCH_SIZE = 8
 def sync_embeddings():
     user_id = get_jwt_identity()
 
-    products = get_products_without_embeddings(limit=10)
+    products = get_products_without_embeddings(limit=100)
 
     if not products:
         return jsonify({'message': 'All products already have embeddings', 'synced': 0}), 200
@@ -81,4 +82,6 @@ def sync_embeddings():
 
     count = bulk_insert_embeddings(records)
 
-    return jsonify({'message': 'Sync complete', 'synced': count}), 200
+    clusters = detect_duplicates(user_id)
+
+    return jsonify({'message': 'Sync complete', 'synced': count, 'clusters': clusters}), 200

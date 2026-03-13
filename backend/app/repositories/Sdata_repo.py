@@ -25,6 +25,15 @@ def get_products_by_ids(id1, id2):
     return products
 
 
+def get_products_by_id_list(product_ids: list) -> dict:
+    """
+    Fetch products for a list of UUIDs.
+    Returns a dict keyed by str(Id) for O(1) lookup.
+    """
+    products = db.session.query(Product).filter(Product.Id.in_(product_ids)).all()
+    return {str(p.Id): p for p in products}
+
+
 def get_products_without_embeddings(limit=10):
     return (
         db.session.query(Product)
