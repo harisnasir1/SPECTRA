@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -10,11 +10,12 @@ import {
   ScanEye,
   Loader2,
 } from "lucide-react";
+import { api, type ApiProduct } from "../../api";
 
 /* ── Types ── */
 
 interface Product {
-  id: number;
+  id: string;
   image: string | null;
   brand: string;
   name: string;
@@ -23,38 +24,30 @@ interface Product {
   hasEmbedding: boolean;
 }
 
-/* ── Mock data ── */
+function toProduct(p: ApiProduct): Product {
+  return {
+    id: p.id,
+    image: p.images[0]?.url ?? null,
+    brand: p.brand,
+    name: p.title,
+    source: p.productType,
+    lastUpdate: new Date(p.createdAt).toLocaleString(),
+    hasEmbedding: p.hasEmbedding,
+  };
+}
 
-const allProducts: Product[] = [
-  { id: 1, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Levi's Blue & Black Cross Patch Jeans", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 2, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Nike White & Silver Air Force 1 Sneakers", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 3, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Blue Jeans", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 4, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black Multicolor Cross Longsleeve T-Shirt", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: false },
-  { id: 5, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Matty Boy Red Form Mesh Jersey T-Shirt", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 6, image: null, brand: "Chrome Hearts", name: "Chrome Hearts Black & White T-Bar Logo Thermal Zip Up Hoodie", source: "Ebay", lastUpdate: "2026-02-26 15:03", hasEmbedding: true },
-  { id: 7, image: null, brand: "EcoWear", name: "Organic Cotton T-Shirt White", source: "Shopify", lastUpdate: "2026-02-25 10:22", hasEmbedding: true },
-  { id: 8, image: null, brand: "EcoWear", name: "Cotton Tee — White — Organic", source: "Shopify", lastUpdate: "2026-02-25 10:22", hasEmbedding: true },
-  { id: 9, image: null, brand: "StrideMax", name: "Running Shoe V2 — Black/Red", source: "Shopify", lastUpdate: "2026-02-24 08:45", hasEmbedding: true },
-  { id: 10, image: null, brand: "StrideMax", name: "V2 Running Shoes Black Red", source: "Shopify", lastUpdate: "2026-02-24 08:45", hasEmbedding: true },
-  { id: 11, image: null, brand: "SoundCore", name: "Wireless Bluetooth Headphones", source: "Shopify", lastUpdate: "2026-02-24 08:45", hasEmbedding: true },
-  { id: 12, image: null, brand: "SoundCore", name: "BT Wireless Headphones Over-Ear", source: "Shopify", lastUpdate: "2026-02-24 08:45", hasEmbedding: false },
-  { id: 13, image: null, brand: "HydroFlask", name: "Stainless Steel Water Bottle 1L", source: "Shopify", lastUpdate: "2026-02-23 14:11", hasEmbedding: true },
-  { id: 14, image: null, brand: "HydroFlask", name: "1L Water Bottle — Steel", source: "Shopify", lastUpdate: "2026-02-23 14:11", hasEmbedding: true },
-  { id: 15, image: null, brand: "FemmeStudio", name: "Midi Wrap Dress Floral Print", source: "Shopify", lastUpdate: "2026-02-23 14:11", hasEmbedding: true },
-  { id: 16, image: null, brand: "FemmeStudio", name: "Floral Wrap Midi Dress", source: "Shopify", lastUpdate: "2026-02-23 14:11", hasEmbedding: true },
-  { id: 17, image: null, brand: "OuterLayer", name: "Puffer Jacket Down Fill — Black", source: "Shopify", lastUpdate: "2026-02-22 09:30", hasEmbedding: true },
-  { id: 18, image: null, brand: "OuterLayer", name: "Down Puffer Jacket Black", source: "Shopify", lastUpdate: "2026-02-22 09:30", hasEmbedding: true },
-  { id: 19, image: null, brand: "CarryAll", name: "Leather Crossbody Bag — Brown", source: "Shopify", lastUpdate: "2026-02-22 09:30", hasEmbedding: true },
-  { id: 20, image: null, brand: "CarryAll", name: "Brown Crossbody Leather Bag", source: "Shopify", lastUpdate: "2026-02-22 09:30", hasEmbedding: false },
-];
-
-const ITEMS_PER_PAGE = 8;
+const PER_PAGE_OPTIONS = [10, 20, 50, 100];
 
 /* ── Component ── */
 
 export function ProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [filterSource, setFilterSource] = useState<string | null>(null);
 
   // Image search modal
@@ -64,8 +57,26 @@ export function ProductsPage() {
   const [imageResults, setImageResults] = useState<Product[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter
-  const baseList = imageResults ?? allProducts;
+  useEffect(() => {
+    setLoading(true);
+    api.getProducts(currentPage, perPage)
+      .then((res) => {
+        setProducts(res.products.map(toProduct));
+        setTotalItems(res.total);
+        setTotalPages(res.pages);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [currentPage, perPage]);
+
+  // Reset to page 1 when perPage changes
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value);
+    setCurrentPage(1);
+  };
+
+  // Client-side filter within the fetched page
+  const baseList = imageResults ?? products;
   const filtered = baseList.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -74,14 +85,10 @@ export function ProductsPage() {
     return matchesSearch && matchesSource;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const page = Math.min(currentPage, totalPages);
-  const paginated = filtered.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  const sources = [...new Set(products.map((p) => p.source))];
 
-  const sources = [...new Set(allProducts.map((p) => p.source))];
+  const pageStart = (currentPage - 1) * perPage + 1;
+  const pageEnd = Math.min(currentPage * perPage, totalItems);
 
   /* ── Image handlers ── */
 
@@ -103,24 +110,34 @@ export function ProductsPage() {
   const handleFindSimilar = () => {
     if (!previewUrl) return;
     setIsSearching(true);
-
-    // TODO: POST image to Flask → CLIP encode → cosine similarity → return matches
     setTimeout(() => {
-      const mockResults = allProducts
-        .filter((p) => p.hasEmbedding)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 5);
-      setImageResults(mockResults);
       setIsSearching(false);
       setModalOpen(false);
-      setCurrentPage(1);
-    }, 1500);
+    }, 500);
   };
 
   const clearImageSearch = () => {
     setImageResults(null);
     setPreviewUrl(null);
     setCurrentPage(1);
+  };
+
+  /* ── Pagination helpers ── */
+
+  const goTo = (p: number) => setCurrentPage(Math.max(1, Math.min(totalPages, p)));
+
+  const pageNumbers = (): (number | "...")[] => {
+    const result: (number | "...")[] = [];
+    const delta = 1;
+    let prev = 0;
+    for (let p = 1; p <= totalPages; p++) {
+      if (p === 1 || p === totalPages || Math.abs(p - currentPage) <= delta) {
+        if (prev && p - prev > 1) result.push("...");
+        result.push(p);
+        prev = p;
+      }
+    }
+    return result;
   };
 
   return (
@@ -152,7 +169,7 @@ export function ProductsPage() {
               {imageResults ? "Results" : "Total Products"}
             </span>
             <span className="ml-2 text-[15px] font-semibold text-[#FAFAFA] font-mono">
-              {filtered.length}
+              {imageResults ? filtered.length : totalItems}
             </span>
           </div>
 
@@ -204,7 +221,7 @@ export function ProductsPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search products..."
               className="pl-9 pr-3 py-2 w-[220px] bg-[#111113] border border-[#1F1F23] rounded-lg text-[13px] text-[#FAFAFA] placeholder-[#3F3F46] focus:outline-none focus:border-[#27272A] transition-colors"
             />
@@ -229,40 +246,53 @@ export function ProductsPage() {
         transition={{ delay: 0.12 }}
         className="bg-[#111113] border border-[#1F1F23] rounded-xl overflow-hidden"
       >
-        <div className="grid grid-cols-[56px_140px_1fr_100px_140px_80px] gap-3 px-4 py-2.5 border-b border-[#1F1F23] text-[11px] font-medium text-[#52525B] uppercase tracking-wider">
+        {/* Column headers */}
+        <div className="grid grid-cols-[64px_1fr_160px_120px_160px_90px] gap-3 px-4 py-2.5 border-b border-[#1F1F23] text-[11px] font-medium text-[#52525B] uppercase tracking-wider">
           <span>Image</span>
-          <span>Brand</span>
           <span>Product Name</span>
+          <span>Brand</span>
           <span>Source</span>
           <span>Last Update</span>
           <span className="text-right">Status</span>
         </div>
 
-        {paginated.length > 0 ? (
-          paginated.map((product, i) => (
+        {loading ? (
+          <div className="px-4 py-12 text-center">
+            <Loader2 className="w-6 h-6 text-[#52525B] animate-spin mx-auto mb-2" />
+            <p className="text-[13px] text-[#52525B]">Loading products…</p>
+          </div>
+        ) : filtered.length > 0 ? (
+          filtered.map((product, i) => (
             <motion.div
               key={product.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.14 + i * 0.03 }}
-              className="grid grid-cols-[56px_140px_1fr_100px_140px_80px] gap-3 px-4 py-3 border-b border-[#1F1F23] last:border-b-0 hover:bg-[#18181B] transition-colors items-center"
+              transition={{ delay: 0.14 + i * 0.02 }}
+              className="grid grid-cols-[64px_1fr_160px_120px_160px_90px] gap-3 px-4 py-3 border-b border-[#1F1F23] last:border-b-0 hover:bg-[#18181B] transition-colors items-center"
             >
-              <div className="w-10 h-10 rounded-lg bg-[#18181B] border border-[#1F1F23] flex items-center justify-center overflow-hidden">
+              {/* Image — leftmost */}
+              <div className="w-12 h-12 rounded-lg bg-[#18181B] border border-[#1F1F23] flex items-center justify-center overflow-hidden shrink-0">
                 {product.image ? (
                   <img src={product.image} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <Package className="w-4 h-4 text-[#27272A]" />
                 )}
               </div>
-              <span className="text-[13px] text-[#A1A1AA] truncate">{product.brand}</span>
+
               <span className="text-[13px] text-[#D4D4D8] truncate">{product.name}</span>
+              <span className="text-[13px] text-[#A1A1AA] truncate">{product.brand}</span>
               <span className="text-[12px] text-[#52525B]">{product.source}</span>
               <span className="text-[12px] font-mono text-[#3F3F46]">{product.lastUpdate}</span>
+
               <div className="flex justify-end">
                 {product.hasEmbedding ? (
-                  <span className="text-[10px] font-medium text-[#34D399] bg-[#34D399]/[0.08] px-2 py-0.5 rounded">Indexed</span>
+                  <span className="text-[10px] font-medium text-[#34D399] bg-[#34D399]/[0.08] px-2 py-0.5 rounded">
+                    Indexed
+                  </span>
                 ) : (
-                  <span className="text-[10px] font-medium text-[#FBBF24] bg-[#FBBF24]/[0.08] px-2 py-0.5 rounded">Pending</span>
+                  <span className="text-[10px] font-medium text-[#FBBF24] bg-[#FBBF24]/[0.08] px-2 py-0.5 rounded">
+                    Pending
+                  </span>
                 )}
               </div>
             </motion.div>
@@ -275,45 +305,67 @@ export function ProductsPage() {
         )}
       </motion.div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between mt-4">
-        <span className="text-[12px] text-[#3F3F46]">
-          Showing {filtered.length > 0 ? (page - 1) * ITEMS_PER_PAGE + 1 : 0}–
-          {Math.min(page * ITEMS_PER_PAGE, filtered.length)} of {filtered.length}
-        </span>
+      {/* Pagination bar */}
+      <div className="flex items-center justify-between mt-4 gap-4 flex-wrap">
+        {/* Left: count + per-page */}
+        <div className="flex items-center gap-3">
+          <span className="text-[12px] text-[#3F3F46]">
+            {totalItems > 0 ? `${pageStart}–${pageEnd} of ${totalItems}` : "0 products"}
+          </span>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] text-[#52525B]">Show</span>
+            <div className="flex items-center gap-0.5">
+              {PER_PAGE_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => handlePerPageChange(n)}
+                  className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors ${
+                    perPage === n
+                      ? "bg-[#1F1F23] text-[#FAFAFA]"
+                      : "text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B]"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: page buttons */}
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
+            onClick={() => goTo(currentPage - 1)}
+            disabled={currentPage <= 1}
             className="p-1.5 rounded-md text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1)
-            .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-            .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-              if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
-              acc.push(p);
-              return acc;
-            }, [])
-            .map((item, idx) =>
-              item === "..." ? (
-                <span key={`d-${idx}`} className="px-1.5 text-[12px] text-[#3F3F46]">…</span>
-              ) : (
-                <button
-                  key={item}
-                  onClick={() => setCurrentPage(item as number)}
-                  className={`w-8 h-8 rounded-md text-[12px] font-medium transition-colors ${
-                    page === item ? "bg-[#FAFAFA] text-[#09090B]" : "text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B]"
-                  }`}
-                >
-                  {item}
-                </button>
-              )
-            )}
+
+          {pageNumbers().map((item, idx) =>
+            item === "..." ? (
+              <span key={`d-${idx}`} className="px-1.5 text-[12px] text-[#3F3F46]">
+                …
+              </span>
+            ) : (
+              <button
+                key={item}
+                onClick={() => goTo(item as number)}
+                className={`w-8 h-8 rounded-md text-[12px] font-medium transition-colors ${
+                  currentPage === item
+                    ? "bg-[#FAFAFA] text-[#09090B]"
+                    : "text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B]"
+                }`}
+              >
+                {item}
+              </button>
+            )
+          )}
+
           <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
+            onClick={() => goTo(currentPage + 1)}
+            disabled={currentPage >= totalPages}
             className="p-1.5 rounded-md text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
@@ -327,7 +379,6 @@ export function ProductsPage() {
       <AnimatePresence>
         {modalOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -336,7 +387,6 @@ export function ProductsPage() {
               className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
             />
 
-            {/* Modal card */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -348,7 +398,6 @@ export function ProductsPage() {
                 className="pointer-events-auto w-full max-w-md bg-[#111113] border border-[#1F1F23] rounded-2xl p-6 shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header */}
                 <div className="flex items-center justify-between mb-5">
                   <div>
                     <h2 className="text-[16px] font-semibold text-[#FAFAFA]">
@@ -366,7 +415,6 @@ export function ProductsPage() {
                   </button>
                 </div>
 
-                {/* Drop / preview zone */}
                 <div
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={handleDrop}
@@ -413,7 +461,6 @@ export function ProductsPage() {
                   )}
                 </div>
 
-                {/* Explainer */}
                 <div className="mt-4 flex items-start gap-2.5 bg-[#18181B]/50 rounded-lg px-3 py-2.5">
                   <ScanEye className="w-3.5 h-3.5 text-[#38BDF8] mt-0.5 shrink-0" />
                   <p className="text-[11px] text-[#52525B] leading-relaxed">
@@ -422,7 +469,6 @@ export function ProductsPage() {
                   </p>
                 </div>
 
-                {/* Buttons */}
                 <div className="flex gap-2.5 mt-5">
                   <button
                     onClick={() => setModalOpen(false)}

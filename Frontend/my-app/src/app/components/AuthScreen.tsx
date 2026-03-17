@@ -2,23 +2,32 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import { Loader2, ArrowRight } from "lucide-react";
+import { api, setToken } from "../../api";
 
 export function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: { preventDefault(): void }) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-
-    // TODO: wire to Flask JWT endpoint
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = isLogin
+        ? await api.login(email, password)
+        : await api.register(name, email, password);
+      setToken(res.token);
       navigate("/dashboard");
-    }, 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,6 +60,22 @@ export function AuthScreen() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div>
+                <label htmlFor="name" className="block text-[13px] font-medium text-[#A1A1AA] mb-1.5">
+                  Name
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-[#09090B] border border-[#27272A] rounded-lg text-[#FAFAFA] text-sm placeholder-[#3F3F46] focus:outline-none focus:border-[#38BDF8]/50 focus:ring-1 focus:ring-[#38BDF8]/20 transition-all"
+                  placeholder="Your name"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label
                 htmlFor="email"
@@ -86,6 +111,12 @@ export function AuthScreen() {
                 required
               />
             </div>
+
+            {error && (
+              <p className="text-[12px] text-[#F87171] bg-[#F87171]/[0.08] border border-[#F87171]/20 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
 
             <button
               type="submit"

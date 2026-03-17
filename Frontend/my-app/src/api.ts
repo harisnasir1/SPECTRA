@@ -1,0 +1,106 @@
+const BASE_URL = 'http://localhost:5000/api';
+
+export interface ApiProductImage {
+  id: number;
+  url: string;
+  priority: number | null;
+}
+
+export interface ApiProduct {
+  id: string;
+  title: string;
+  brand: string;
+  description: string;
+  price: number;
+  category: string;
+  gender: string;
+  status: string | null;
+  productUrl: string;
+  productType: string;
+  condition: string;
+  sku: string | null;
+  conditionGrade: string | null;
+  createdAt: string;
+  images: ApiProductImage[];
+  hasEmbedding: boolean;
+}
+
+export interface ApiScoreEntry {
+  image: number;
+  text: number;
+  final: number;
+}
+
+export interface ApiCluster {
+  id: number;
+  productIds: string[];
+  products: ApiProduct[];
+  winnerId: string | null;
+  scores: Record<string, ApiScoreEntry> | null;
+  status: string;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+/* ── Token helpers ── */
+
+export function getToken(): string | null {
+  return localStorage.getItem('token');
+}
+
+export function setToken(token: string) {
+  localStorage.setItem('token', token);
+}
+
+export function clearToken() {
+  localStorage.removeItem('token');
+}
+
+/* ── Core fetch ── */
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+
+  if (res.status === 401 || res.status === 422) {
+    clearToken();
+    window.location.href = '/';
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+/* ── API calls ── */
+
+export const api = {
+  login: (email: string, password: string) =>
+    request<{ token: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+
+  register: (name: string, email: string, password: string) =>
+    request<{ token: string }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    }),
+
+  getProducts: (page = 1, perPage = 20) =>
+    request<{ products: ApiProduct[]; total: number; page: number; per_page: number; pages: number }>(
+      `/products/?page=${page}&per_page=${perPage}`
+    ),
+
+  getDuplicates: () =>
+    request<{ clusters: Record<string, ApiCluster>; total: number }>('/duplicates/'),
+};

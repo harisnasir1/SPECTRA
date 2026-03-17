@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router";
+import { Outlet, NavLink, useNavigate, Navigate } from "react-router";
 import { motion } from "framer-motion";
 import {
   Layers,
@@ -9,6 +9,7 @@ import {
   LogOut,
   PackageSearch
 } from "lucide-react";
+import { getToken, clearToken } from "../../api";
 
 const navItems = [
   { to: "/dashboard", label: "Overview", icon: Layers },
@@ -21,6 +22,8 @@ const navItems = [
 
 export function RootLayout() {
   const navigate = useNavigate();
+
+  if (!getToken()) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen bg-[#09090B] text-white">
@@ -64,7 +67,7 @@ export function RootLayout() {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => navigate("/")}
+            onClick={() => { clearToken(); navigate("/"); }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] text-[#3F3F46] hover:text-[#71717A] hover:bg-[#18181B] transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />

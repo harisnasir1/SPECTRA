@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 from .config import Config
 from .extensions import db, jwt, bcrypt
 
@@ -9,7 +10,7 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
     bcrypt.init_app(app)
-    
+    CORS(app)
     from .routes.auth import auth_bp
     from .routes.products import products_bp
     from .routes.ingest import ingest_bp
