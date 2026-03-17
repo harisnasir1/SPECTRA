@@ -43,3 +43,21 @@ def get_products_without_embeddings(limit=10):
         .limit(limit)
         .all()
     )
+
+
+def get_products_paginated(user_id, page=1, per_page=20, brand=None,q=None,type=None):
+    query = db.session.query(Product).filter(Product.UserId == user_id)
+
+    if brand:
+        query = query.filter(Product.Brand.ilike(f'%{brand}%'))
+
+    if q:
+        query = query.filter(Product.Brand.ilike(f'%{q}%') | Product.Title.ilike(f'%{q}%'))
+
+    if type:
+        query = query.filter(Product.Category.ilike(f'%{type}%') )
+
+    total = query.count()
+    products = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return products, total

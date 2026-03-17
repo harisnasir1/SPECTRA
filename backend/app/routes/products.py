@@ -2,7 +2,7 @@ from flask import Blueprint,request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models.product import Product
-
+from app.repositories.Sdata_repo import get_products_paginated
 products_bp = Blueprint('products', __name__)
 
 @products_bp.route('/', methods=['GET'])
@@ -11,10 +11,11 @@ def get_products():
     user_id = get_jwt_identity()
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-
-    query = db.session.query(Product).filter(Product.UserId == user_id)
-    total = query.count()
-    products = query.offset((page - 1) * per_page).limit(per_page).all()
+    brand=request.args.get('brand',None,type=str)
+    type=request.args.get('type',None,type=str)
+    q=request.args.get('q',None,type=str)
+    
+    products, total = get_products_paginated(user_id,page,per_page,brand,q)
 
     result = []
     for p in products:
