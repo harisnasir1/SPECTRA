@@ -96,10 +96,18 @@ export const api = {
       body: JSON.stringify({ name, email, password }),
     }),
 
-  getProducts: (page = 1, perPage = 20) =>
-    request<{ products: ApiProduct[]; total: number; page: number; per_page: number; pages: number }>(
-      `/products/?page=${page}&per_page=${perPage}`
-    ),
+  getProducts: (page = 1, perPage = 20, brand?: string, type?: string, q?: string) => {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    if (brand) params.set('brand', brand);
+    if (type) params.set('type', type);
+    if (q) params.set('q', q);
+    return request<{ products: ApiProduct[]; total: number; page: number; per_page: number; pages: number }>(
+      `/products/?${params}`
+    );
+  },
+
+  getProductFilters: () =>
+    request<{ brands: string[]; productTypes: string[]; category: string[] }>('/products/filters'),
 
   getDuplicates: () =>
     request<{ clusters: Record<string, ApiCluster>; total: number }>('/duplicates/'),

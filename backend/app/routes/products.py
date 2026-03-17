@@ -2,7 +2,7 @@ from flask import Blueprint,request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models.product import Product
-from app.repositories.Sdata_repo import get_products_paginated
+from app.repositories.Sdata_repo import get_products_paginated,get_distinct_filters
 products_bp = Blueprint('products', __name__)
 
 @products_bp.route('/', methods=['GET'])
@@ -15,7 +15,7 @@ def get_products():
     type=request.args.get('type',None,type=str)
     q=request.args.get('q',None,type=str)
     
-    products, total = get_products_paginated(user_id,page,per_page,brand,q)
+    products, total = get_products_paginated(user_id,page,per_page,brand,q,type)
 
     result = []
     for p in products:
@@ -31,3 +31,11 @@ def get_products():
         'per_page': per_page,
         'pages': (total + per_page - 1) // per_page
     }), 200
+
+
+@products_bp.route('/filters', methods=['GET'])
+@jwt_required()
+def get_filters():
+    user_id = get_jwt_identity()
+    filters = get_distinct_filters(user_id)
+    return jsonify(filters), 200

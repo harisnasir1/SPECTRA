@@ -55,9 +55,31 @@ def get_products_paginated(user_id, page=1, per_page=20, brand=None,q=None,type=
         query = query.filter(Product.Brand.ilike(f'%{q}%') | Product.Title.ilike(f'%{q}%'))
 
     if type:
-        query = query.filter(Product.Category.ilike(f'%{type}%') )
+        query = query.filter(Product.ProductType.ilike(f'%{type}%') )
 
     total = query.count()
     products = query.offset((page - 1) * per_page).limit(per_page).all()
 
     return products, total
+
+def get_distinct_filters(user_id):
+    brands = db.session.query(Product.Brand).filter(
+        Product.UserId == user_id,
+        Product.Brand.isnot(None)
+    ).distinct().order_by(Product.Brand).all()
+
+    product_types = db.session.query(Product.ProductType).filter(
+        Product.UserId == user_id,
+        Product.ProductType.isnot(None)
+    ).distinct().order_by(Product.ProductType).all()
+
+    category= db.session.query(Product.Category).filter(
+        Product.UserId == user_id,
+        Product.Category.isnot(None)
+    ).distinct().order_by(Product.Category).all()
+
+    return {
+        'brands': [b[0] for b in brands],
+        'productTypes': [pt[0] for pt in product_types],
+        'category': [ct[0] for ct in category]
+    }

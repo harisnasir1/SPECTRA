@@ -44,11 +44,13 @@ export function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [pendingSearch, setPendingSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [filterSource, setFilterSource] = useState<string | null>(null);
+  const [productTypes, setProductTypes] = useState<string[]>([]);
 
   // Image search modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -57,9 +59,16 @@ export function ProductsPage() {
   const [imageResults, setImageResults] = useState<Product[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch filter options once
+  useEffect(() => {
+    api.getProductFilters()
+      .then((res) => setProductTypes(res.productTypes))
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     setLoading(true);
-    api.getProducts(currentPage, perPage)
+    api.getProducts(currentPage, perPage, undefined, filterSource ?? undefined, search || undefined)
       .then((res) => {
         setProducts(res.products.map(toProduct));
         setTotalItems(res.total);
@@ -67,7 +76,7 @@ export function ProductsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [currentPage, perPage]);
+  }, [currentPage, perPage, filterSource, search]);
 
   // Reset to page 1 when perPage changes
   const handlePerPageChange = (value: number) => {
@@ -75,17 +84,15 @@ export function ProductsPage() {
     setCurrentPage(1);
   };
 
-  // Client-side filter within the fetched page
-  const baseList = imageResults ?? products;
-  const filtered = baseList.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.brand.toLowerCase().includes(search.toLowerCase());
-    const matchesSource = filterSource ? p.source === filterSource : true;
-    return matchesSearch && matchesSource;
-  });
+  const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      setSearch(pendingSearch);
+      setCurrentPage(1);
+    }
+  };
 
-  const sources = [...new Set(products.map((p) => p.source))];
+  const filtered = imageResults ?? products;
+  const sources = productTypes;
 
   const pageStart = (currentPage - 1) * perPage + 1;
   const pageEnd = Math.min(currentPage * perPage, totalItems);
@@ -120,6 +127,8 @@ export function ProductsPage() {
     setImageResults(null);
     setPreviewUrl(null);
     setCurrentPage(1);
+    setPendingSearch("");
+    setSearch("");
   };
 
   /* ── Pagination helpers ── */
@@ -174,10 +183,10 @@ export function ProductsPage() {
           </div>
 
           {!imageResults && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 overflow-x-auto max-w-[420px] scrollbar-none">
               <button
                 onClick={() => { setFilterSource(null); setCurrentPage(1); }}
-                className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+                className={`shrink-0 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
                   !filterSource
                     ? "bg-[#1F1F23] text-[#FAFAFA]"
                     : "text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B]"
@@ -192,7 +201,7 @@ export function ProductsPage() {
                     setFilterSource(filterSource === s ? null : s);
                     setCurrentPage(1);
                   }}
-                  className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+                  className={`shrink-0 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
                     filterSource === s
                       ? "bg-[#1F1F23] text-[#FAFAFA]"
                       : "text-[#52525B] hover:text-[#A1A1AA] hover:bg-[#18181B]"
@@ -220,9 +229,10 @@ export function ProductsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#3F3F46]" />
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products..."
+              value={pendingSearch}
+              onChange={(e) => setPendingSearch(e.target.value)}
+              onKeyDown={handleSearchSubmit}
+              placeholder="Search products…"
               className="pl-9 pr-3 py-2 w-[220px] bg-[#111113] border border-[#1F1F23] rounded-lg text-[13px] text-[#FAFAFA] placeholder-[#3F3F46] focus:outline-none focus:border-[#27272A] transition-colors"
             />
           </div>
