@@ -69,7 +69,7 @@ def detect_duplicates(user_id: str, product_ids: list[str] | None = None) -> int
             current_sdata_id=embedding.SdataId,
             image_vector=embedding.ImageVector,
             text_vector=embedding.TextVector,
-            threshold=0.70,
+            threshold=0.89,
         )
 
         if not matches:

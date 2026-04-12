@@ -57,7 +57,7 @@ class CLIPService:
 
     def encode_text(self, text: str):
         """Encode a text string and return a 768-dim vector as a list of floats"""
-        # Tokenize: converts string to token IDs that the model understands
+        # Tokenize: converts string to   IDs that the model understands
         # Wrapping in list because tokenizer expects a batch: ["some text"]
         tokens = self.tokenizer([text]).to(self.device)
 

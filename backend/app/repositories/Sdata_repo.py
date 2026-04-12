@@ -95,7 +95,7 @@ def get_products_without_embeddings(limit=10):
         .outerjoin(Embedding, Product.Id == Embedding.SdataId)
         .filter(Embedding.Id == None)
         .filter(Product.images.any())
-        .limit(limit)
+        # .limit(limit)
         .all()
     )
 

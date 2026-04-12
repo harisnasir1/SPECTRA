@@ -1,4 +1,7 @@
-from flask import Blueprint, request, jsonify
+import uuid
+import threading
+
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.repositories.Sdata_repo import get_products_by_ids, get_products_without_embeddings, bulk_insert_products
 from app.repositories.embedding_repo import bulk_insert_embeddings
@@ -7,6 +10,9 @@ from app.services.duplicate_service import detect_duplicates
 
 ingest_bp = Blueprint('ingest', __name__)
 clip = CLIPService()
+
+# In-memory job store: { job_id: { status, result, error } }
+_jobs: dict = {}
 
 REQUIRED_FIELDS = ['title', 'brand', 'description', 'price', 'category', 'gender', 'product_url', 'product_type', 'condition', 'image']
 
@@ -126,39 +132,57 @@ def Test():
 BATCH_SIZE = 8
 
 
+def _run_sync(job_id: str, user_id: str,app):
+    
+ with app.app_context():
+    try:
+        products = get_products_without_embeddings(limit=100)
+
+        if not products:
+            _jobs[job_id] = {'status': 'done', 'result': {'synced': 0, 'clusters': []}}
+            return
+
+        records = []
+        for i in range(0, len(products), BATCH_SIZE):
+            batch = products[i:i + BATCH_SIZE]
+            urls = [p.images[0].Url for p in batch]
+            texts = [clip.build_text_input(p) for p in batch]
+
+            image_vectors = clip.encode_images_batch(urls)
+            text_vectors = clip.encode_texts_batch(texts)
+
+            for product, img_vec, txt_vec in zip(batch, image_vectors, text_vectors):
+                if img_vec is None:
+                    continue
+                records.append({
+                    'SdataId': product.Id,
+                    'UserId': user_id,
+                    'ImageVector': img_vec,
+                    'TextVector': txt_vec,
+                })
+
+        count = bulk_insert_embeddings(records)
+        clusters = detect_duplicates(user_id)
+        _jobs[job_id] = {'status': 'done', 'result': {'synced': count, 'clusters': clusters}}
+    except Exception as e:
+        _jobs[job_id] = {'status': 'error', 'error': str(e)}
+
+
 @ingest_bp.route('/sync', methods=['POST'])
 @jwt_required()
 def sync_embeddings():
     user_id = get_jwt_identity()
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {'status': 'pending'}
+    app = current_app._get_current_object()
+    threading.Thread(target=_run_sync, args=(job_id, user_id,app), daemon=True).start()
+    return jsonify({'job_id': job_id, 'status': 'pending'}), 202
 
-    products = get_products_without_embeddings(limit=100)
 
-    if not products:
-        return jsonify({'message': 'All products already have embeddings', 'synced': 0}), 200
-
-    records = []
-
-    for i in range(0, len(products), BATCH_SIZE):
-        batch = products[i:i + BATCH_SIZE]
-
-        urls = [p.images[0].Url for p in batch]
-        texts = [clip.build_text_input(p) for p in batch]
-
-        image_vectors = clip.encode_images_batch(urls)
-        text_vectors = clip.encode_texts_batch(texts)
-
-        for product, img_vec, txt_vec in zip(batch, image_vectors, text_vectors):
-            if img_vec is None:
-                continue
-            records.append({
-                'SdataId': product.Id,
-                'UserId': user_id,
-                'ImageVector': img_vec,
-                'TextVector': txt_vec,
-            })
-
-    count = bulk_insert_embeddings(records)
-
-    clusters = detect_duplicates(user_id)
-
-    return jsonify({'message': 'Sync complete', 'synced': count, 'clusters': clusters}), 200
+@ingest_bp.route('/sync/status/<job_id>', methods=['GET'])
+@jwt_required()
+def sync_status(job_id: str):
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify({'job_id': job_id, **job}), 200
