@@ -68,7 +68,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
-  if (res.status === 401 || res.status === 422) {
+  if (res.status === 401 ) {
     clearToken();
     window.location.href = '/';
     throw new Error('Session expired. Please log in again.');
@@ -111,4 +111,16 @@ export const api = {
 
   getDuplicates: () =>
     request<{ clusters: Record<string, ApiCluster>; total: number }>('/duplicates/'),
+
+  ingestProducts: (products: object[]) =>
+    request<{
+      inserted: number;
+      skipped: number;
+      new_clusters: number;
+      products: ApiProduct[];
+      validation_errors?: { index: number; missing_fields: string[] }[];
+    }>('/ingest/products', {
+      method: 'POST',
+      body: JSON.stringify(products),
+    }),
 };
