@@ -1,6 +1,6 @@
 from app.extensions import db, clip
 from app.models.duplicate import DuplicatePair
-from app.repositories.embedding_repo import get_embeddings_by_user
+from app.repositories.embedding_repo import get_embeddings_by_user, get_embeddings_by_ids
 from app.repositories.duplicate_repo import (
     find_similar_embeddings,
     find_existing_duplicate_pair,
@@ -30,18 +30,24 @@ def _pairwise_scores(cluster_ids: list[str], embedding_map: dict) -> dict:
     return scores
 
 
-def detect_duplicates(user_id: str) -> int:
+def detect_duplicates(user_id: str, product_ids: list[str] | None = None) -> int:
     """
-    For every un-grouped embedding that belongs to user_id:
-    1. Query pgvector for products with combined similarity > 0.89.
-    2. Merge into an existing pending DuplicatePairs cluster if one already
-       contains any of the matched IDs; otherwise create a new cluster.
-    3. Compute pairwise scores for all cluster members.
-    4. Persist everything in a single commit.
+    Scan embeddings for duplicates and build/update DuplicatePairs clusters.
+
+    If product_ids is given, only those products are used as the scan seed —
+    pgvector still searches across all products for matches, but we only
+    iterate over the provided IDs. This is used after ingest to avoid
+    re-scanning the entire catalogue.
 
     Returns the number of new DuplicatePairs rows created.
     """
-    embeddings = get_embeddings_by_user(user_id)
+    print("this ids is going in for detection",product_ids)
+    if product_ids is not None:
+        embeddings = get_embeddings_by_ids(product_ids)
+    else:
+        embeddings = get_embeddings_by_user(user_id)
+
+    print("this matching embeddings",embeddings)
     if not embeddings:
         return 0
 
@@ -63,7 +69,7 @@ def detect_duplicates(user_id: str) -> int:
             current_sdata_id=embedding.SdataId,
             image_vector=embedding.ImageVector,
             text_vector=embedding.TextVector,
-            threshold=0.89,
+            threshold=0.70,
         )
 
         if not matches:
@@ -77,9 +83,19 @@ def detect_duplicates(user_id: str) -> int:
         if existing:
             existing_ids = [str(pid) for pid in existing.ProductIds]
             merged = list(dict.fromkeys(existing_ids + [product_id]))
+            # Fetch embeddings for any old cluster members not already in the map
+            missing_ids = [pid for pid in existing_ids if pid not in embedding_map]
+            if missing_ids:
+                old_embeddings = get_embeddings_by_ids(missing_ids)
+                for e in old_embeddings:
+                    embedding_map[str(e.SdataId)] = e
             existing.ProductIds = merged
             existing.Scores     = _pairwise_scores(merged, embedding_map)
         else:
+            missing_ids = [pid for pid in match_ids if pid not in embedding_map]
+            if missing_ids:
+                for e in get_embeddings_by_ids(missing_ids):
+                    embedding_map[str(e.SdataId)] = e
             scores = _pairwise_scores(all_ids, embedding_map)
             add_duplicate_pair(user_id, all_ids, scores)
             new_pairs_count += 1

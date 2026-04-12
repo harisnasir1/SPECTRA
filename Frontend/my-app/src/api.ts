@@ -42,6 +42,25 @@ export interface ApiCluster {
   createdAt: string;
 }
 
+/* ── Resolver cluster types (slim product shape from /duplicates/) ── */
+
+export interface ApiResolverProduct {
+  id: string;
+  title: string;
+  brand: string;
+  description: string;
+  gender: string;
+  sku: string | null;
+  productType: string;
+  image: string | null;
+}
+
+export interface ApiResolverCluster {
+  clusterId: number;
+  scores: Record<string, ApiScoreEntry> | null;
+  products: ApiResolverProduct[];
+}
+
 /* ── Token helpers ── */
 
 export function getToken(): string | null {
@@ -110,7 +129,7 @@ export const api = {
     request<{ brands: string[]; productTypes: string[]; category: string[] }>('/products/filters'),
 
   getDuplicates: () =>
-    request<{ clusters: Record<string, ApiCluster>; total: number }>('/duplicates/'),
+    request<{ clusters: ApiResolverCluster[]; total: number }>('/duplicates/'),
 
   ingestProducts: (products: object[]) =>
     request<{

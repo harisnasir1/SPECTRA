@@ -13,20 +13,34 @@ def get_duplicate_clusters():
 
     pairs = get_pending_clusters(user_id)
 
-    result = {}
-    for i, pair in enumerate(pairs, 1):
+    result = []
+    for pair in pairs:
         product_map = get_products_by_id_list(pair.ProductIds)
-        ordered_products = [
-            {
-                **product_map[str(pid)].to_dict(),
-                'images': [img.to_dict() for img in product_map[str(pid)].images],
-            }
-            for pid in pair.ProductIds
-            if str(pid) in product_map
-        ]
-        result[str(i)] = {
-            **pair.to_dict(),
-            'products': ordered_products,
-        }
+
+        products = []
+        for pid in pair.ProductIds:
+            p = product_map.get(str(pid))
+            if not p:
+                continue
+            first_image = next(
+                (img.Url for img in sorted(p.images, key=lambda x: x.Priority or 0)),
+                None
+            )
+            products.append({
+                'id':          str(p.Id),
+                'title':       p.Title,
+                'brand':       p.Brand,
+                'description': p.Description,
+                'gender':      p.Gender,
+                'sku':         p.Sku,
+                'productType': p.ProductType,
+                'image':       first_image,
+            })
+
+        result.append({
+            'clusterId': pair.Id,
+            'scores':    pair.Scores,
+            'products':  products,
+        })
 
     return jsonify({'clusters': result, 'total': len(result)}), 200

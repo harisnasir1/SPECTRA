@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GitMerge,
@@ -7,216 +7,10 @@ import {
   CheckCircle,
   Crown,
   Package,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
+import { api, type ApiResolverCluster, type ApiResolverProduct } from "../../api";
 
-/* ── Types matching backend response ── */
-
-interface ProductImage {
-  id: number;
-  priority: number;
-  url: string;
-}
-
-interface Product {
-  id: string;
-  title: string;
-  brand: string;
-  price: number;
-  sku: string;
-  description: string;
-  images: ProductImage[];
-  category: string;
-  condition: string;
-  conditionGrade: string;
-  gender: string;
-  productType: string;
-  productUrl: string;
-  status: string;
-  createdAt: string;
-}
-
-interface DuplicateCluster {
-  id: number;
-  productIds: string[];
-  products: Product[];
-  createdAt: string;
-}
-
-/* ── Mock data ── */
-
-const mockClusters: DuplicateCluster[] = [
-  {
-    id: 1,
-    createdAt: "2026-03-13T15:52:10.201613+00:00",
-    productIds: ["p1", "p2", "p3", "p4"],
-    products: [
-      {
-        id: "p1",
-        title: "Canada Goose Black Carson Men's Jacket",
-        brand: "Canada Goose",
-        price: 650,
-        sku: "CG-001",
-        description: "Black color, Canada Goose badge on sleeve, 3 front pockets, concealed zipper closure",
-        images: [{ id: 1, priority: 1, url: "https://cdn.shopify.com/s/files/1/0325/9380/5371/files/PhotoJul312025_115058AM.jpg?v=1753991346" }],
-        category: "Clothing",
-        condition: "Pre-Owned",
-        conditionGrade: "Great Condition",
-        gender: "Male",
-        productType: "Coats & Jackets",
-        productUrl: "https://savonches.com/products/canada-goose-black-carson-mens-jacket-13",
-        status: "Categorized",
-        createdAt: "2025-08-07T15:39:25.859535+00:00",
-      },
-      {
-        id: "p2",
-        title: "Canada Goose Carson Parka Black",
-        brand: "Canada Goose",
-        price: 645,
-        sku: "CG-002",
-        description: "Men's Carson parka in black, badge on arm, zip closure",
-        images: [{ id: 2, priority: 1, url: "https://cdn.shopify.com/s/files/1/0325/9380/5371/files/PhotoJul312025_112716AM.jpg?v=1753991346" }],
-        category: "Clothing",
-        condition: "Pre-Owned",
-        conditionGrade: "Good Condition",
-        gender: "Male",
-        productType: "Coats & Jackets",
-        productUrl: "https://savonches.com/products/canada-goose-carson-parka-black",
-        status: "Categorized",
-        createdAt: "2025-08-08T10:00:00.000000+00:00",
-      },
-      {
-        id: "p3",
-        title: "Canada Goose Black Jacket (Carson)",
-        brand: "Canada Goose",
-        price: 640,
-        sku: "",
-        description: "Authentic Canada Goose jacket, black, men's cut",
-        images: [],
-        category: "Clothing",
-        condition: "Pre-Owned",
-        conditionGrade: "Great Condition",
-        gender: "Male",
-        productType: "Coats & Jackets",
-        productUrl: "",
-        status: "Uncategorized",
-        createdAt: "2025-08-09T11:00:00.000000+00:00",
-      },
-      {
-        id: "p4",
-        title: "CG Carson Mens Black Down Jacket",
-        brand: "Canada Goose",
-        price: 655,
-        sku: "CG-004",
-        description: "Down filled jacket from Canada Goose, black colorway",
-        images: [],
-        category: "Clothing",
-        condition: "Pre-Owned",
-        conditionGrade: "Fair Condition",
-        gender: "Male",
-        productType: "Coats & Jackets",
-        productUrl: "",
-        status: "Categorized",
-        createdAt: "2025-08-10T09:00:00.000000+00:00",
-      },
-    ],
-  },
-  {
-    id: 2,
-    createdAt: "2026-03-13T16:00:00.000000+00:00",
-    productIds: ["p5", "p6"],
-    products: [
-      {
-        id: "p5",
-        title: "Wireless Bluetooth Headphones",
-        brand: "SoundCore",
-        price: 79,
-        sku: "SC-BT-HP-001",
-        description: "Over-ear wireless headphones with noise cancellation",
-        images: [],
-        category: "Electronics",
-        condition: "New",
-        conditionGrade: "New",
-        gender: "Unisex",
-        productType: "Headphones",
-        productUrl: "",
-        status: "Categorized",
-        createdAt: "2025-09-01T10:00:00.000000+00:00",
-      },
-      {
-        id: "p6",
-        title: "BT Wireless Headphones Over-Ear",
-        brand: "SoundCore",
-        price: 79,
-        sku: "SC-BT-HP-003",
-        description: "Bluetooth over-ear headphones, ANC enabled",
-        images: [],
-        category: "Electronics",
-        condition: "New",
-        conditionGrade: "New",
-        gender: "Unisex",
-        productType: "Headphones",
-        productUrl: "",
-        status: "Categorized",
-        createdAt: "2025-09-02T10:00:00.000000+00:00",
-      },
-    ],
-  },
-];
-
-
-/* ── Image carousel for a product card ── */
-
-function ProductImageCarousel({ images }: { images: ProductImage[] }) {
-  const [idx, setIdx] = useState(0);
-
-  if (images.length === 0) {
-    return (
-      <div className="aspect-[4/3] bg-[#18181B] border border-[#1F1F23] rounded-lg flex items-center justify-center">
-        <Package className="w-8 h-8 text-[#27272A]" />
-      </div>
-    );
-  }
-
-  const sorted = [...images].sort((a, b) => a.priority - b.priority);
-
-  return (
-    <div className="aspect-[4/3] bg-[#18181B] border border-[#1F1F23] rounded-lg overflow-hidden relative group">
-      <img
-        src={sorted[idx].url}
-        alt="product"
-        className="w-full h-full object-cover"
-      />
-      {sorted.length > 1 && (
-        <>
-          <button
-            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i - 1 + sorted.length) % sorted.length); }}
-            className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <ChevronLeft className="w-3 h-3 text-white" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setIdx((i) => (i + 1) % sorted.length); }}
-            className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/50 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <ChevronRight className="w-3 h-3 text-white" />
-          </button>
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-            {sorted.map((_, i) => (
-              <div
-                key={i}
-                className={`w-1 h-1 rounded-full transition-colors ${i === idx ? "bg-white" : "bg-white/30"}`}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ── Single product card ── */
+/* ── Product card ── */
 
 function ProductCard({
   product,
@@ -225,7 +19,7 @@ function ProductCard({
   onSetMaster,
   onToggleUnique,
 }: {
-  product: Product;
+  product: ApiResolverProduct;
   isMaster: boolean;
   isUnique: boolean;
   onSetMaster: () => void;
@@ -242,7 +36,7 @@ function ProductCard({
           : "border-[#1F1F23]"
       }`}
     >
-      {/* Top-right badge: Master or Unique */}
+      {/* Top-right badge */}
       {isUnique ? (
         <div className="absolute top-3 right-3 flex items-center gap-1 bg-[#34D399]/[0.1] text-[#34D399] text-[10px] font-semibold px-2 py-0.5 rounded-md">
           <ShieldCheck className="w-2.5 h-2.5" />
@@ -255,24 +49,25 @@ function ProductCard({
         </div>
       ) : null}
 
-      {/* Status badge */}
-      <div className="mb-3">
-        <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded bg-[#1F1F23] text-[#52525B]">
-          {product.status.toUpperCase()}
-        </span>
+      {/* Image */}
+      <div className="aspect-[4/3] bg-[#18181B] border border-[#1F1F23] rounded-lg overflow-hidden mb-3">
+        {product.image ? (
+          <img src={product.image} alt="product" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Package className="w-8 h-8 text-[#27272A]" />
+          </div>
+        )}
       </div>
 
-      {/* Image */}
-      <ProductImageCarousel images={product.images} />
-
       {/* Details */}
-      <div className="mt-3 space-y-2 flex-1">
+      <div className="space-y-2 flex-1">
         <p className={`text-[13px] font-medium leading-snug line-clamp-2 ${isUnique ? "line-through text-[#52525B]" : "text-[#FAFAFA]"}`}>
           {product.title}
         </p>
         <div className="flex items-center justify-between">
           <span className="text-[12px] text-[#71717A]">{product.brand}</span>
-          <span className="text-[13px] font-semibold text-[#D4D4D8]">${product.price}</span>
+          <span className="text-[11px] text-[#52525B]">{product.gender}</span>
         </div>
         {product.sku && (
           <p className="text-[11px] font-mono text-[#52525B]">SKU: {product.sku}</p>
@@ -280,16 +75,13 @@ function ProductCard({
         <p className="text-[11px] text-[#52525B] leading-relaxed line-clamp-2">
           {product.description}
         </p>
-        <div className="flex gap-2 flex-wrap pt-0.5">
-          <Tag value={product.condition} />
-          <Tag value={product.conditionGrade} />
-          {product.gender !== "Unisex" && <Tag value={product.gender} />}
-        </div>
+        <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#18181B] text-[#52525B] border border-[#1F1F23]">
+          {product.productType}
+        </span>
       </div>
 
-      {/* Card action buttons */}
+      {/* Actions */}
       <div className="mt-4 flex flex-col gap-2">
-        {/* Set master — hidden when unique */}
         {!isUnique && (
           <button
             onClick={onSetMaster}
@@ -304,8 +96,6 @@ function ProductCard({
             {isMaster ? "Master Product" : "Set as Master"}
           </button>
         )}
-
-        {/* Mark unique / Undo */}
         <button
           onClick={onToggleUnique}
           className={`w-full py-1.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
@@ -322,17 +112,13 @@ function ProductCard({
   );
 }
 
-function Tag({ value }: { value: string }) {
-  return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#18181B] text-[#52525B] border border-[#1F1F23]">
-      {value}
-    </span>
-  );
-}
-
 /* ── Main page ── */
 
 export function ResolvePage() {
+  const [clusters, setClusters] = useState<ApiResolverCluster[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [mergedCount, setMergedCount] = useState(0);
   const [uniqueCount, setUniqueCount] = useState(0);
@@ -340,18 +126,22 @@ export function ResolvePage() {
   const [masterId, setMasterId] = useState<string | null>(null);
   const [markedUniqueIds, setMarkedUniqueIds] = useState<Set<string>>(new Set());
 
-  const cluster = mockClusters[currentIndex];
-  const total = mockClusters.length;
+  useEffect(() => {
+    api.getDuplicates()
+      .then((res) => setClusters(res.clusters))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const cluster = clusters[currentIndex];
+  const total = clusters.length;
   const isDone = currentIndex >= total;
 
   const remainingProducts = cluster?.products.filter((p) => !markedUniqueIds.has(p.id)) ?? [];
-
-  // Master is the explicit choice if still in remaining, otherwise first remaining product
   const effectiveMaster =
     masterId && !markedUniqueIds.has(masterId)
       ? masterId
       : remainingProducts[0]?.id ?? null;
-
   const canMerge = remainingProducts.length >= 2;
 
   const advance = () => {
@@ -367,7 +157,6 @@ export function ResolvePage() {
         next.delete(productId);
       } else {
         next.add(productId);
-        // If the explicit master is being marked unique, clear it so effectiveMaster auto-picks next
         if (productId === masterId) setMasterId(null);
       }
       return next;
@@ -375,7 +164,7 @@ export function ResolvePage() {
   };
 
   const handleMerge = () => {
-    console.log("Merge cluster", cluster?.id, "with master:", effectiveMaster, "remaining:", remainingProducts.map((p) => p.id));
+    console.log("Merge cluster", cluster?.clusterId, "master:", effectiveMaster, "remaining:", remainingProducts.map((p) => p.id));
     setMergedCount((c) => c + 1);
     advance();
   };
@@ -389,6 +178,22 @@ export function ResolvePage() {
     setSkippedCount((c) => c + 1);
     advance();
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-6 py-8 flex items-center justify-center h-64">
+        <p className="text-sm text-[#52525B]">Loading clusters…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-6 py-8">
+        <p className="text-sm text-[#F87171]">Failed to load: {error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-8">
@@ -412,7 +217,7 @@ export function ResolvePage() {
           <div className="flex-1 bg-[#1F1F23] rounded-full h-1.5 overflow-hidden">
             <motion.div
               className="h-full bg-[#38BDF8] rounded-full"
-              animate={{ width: `${(currentIndex / total) * 100}%` }}
+              animate={{ width: total > 0 ? `${(currentIndex / total) * 100}%` : "0%" }}
               transition={{ duration: 0.4 }}
             />
           </div>
@@ -437,7 +242,7 @@ export function ResolvePage() {
       <AnimatePresence mode="wait">
         {!isDone && cluster ? (
           <motion.div
-            key={cluster.id}
+            key={cluster.clusterId}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
@@ -447,7 +252,7 @@ export function ResolvePage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-[12px] font-mono font-semibold text-[#F87171] bg-[#F87171]/[0.08] px-2.5 py-1 rounded-md">
-                  Cluster #{cluster.id}
+                  Cluster #{cluster.clusterId}
                 </span>
                 <span className="text-[12px] text-[#52525B]">
                   {cluster.products.length} products
@@ -480,7 +285,6 @@ export function ResolvePage() {
               </div>
             </div>
 
-            {/* Hint */}
             {!masterId && remainingProducts.length > 0 && (
               <p className="text-[11px] text-[#52525B] mb-3">
                 First product is master by default — click "Set as Master" on any card to change it.
@@ -489,7 +293,6 @@ export function ResolvePage() {
 
             {/* Action buttons */}
             <div className="grid grid-cols-3 gap-3">
-              {/* Merge */}
               <motion.button
                 whileHover={canMerge ? { scale: 1.01 } : {}}
                 whileTap={canMerge ? { scale: 0.99 } : {}}
@@ -505,7 +308,6 @@ export function ResolvePage() {
                 Merge{canMerge ? ` ${remainingProducts.length} Products` : " (need ≥2)"}
               </motion.button>
 
-              {/* Mark cluster unique */}
               <motion.button
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
@@ -516,7 +318,6 @@ export function ResolvePage() {
                 All Unique
               </motion.button>
 
-              {/* Skip */}
               <motion.button
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
@@ -529,7 +330,6 @@ export function ResolvePage() {
             </div>
           </motion.div>
         ) : (
-          /* Done state */
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -538,10 +338,13 @@ export function ResolvePage() {
             <div className="inline-flex p-4 bg-[#34D399]/[0.08] rounded-2xl mb-4">
               <CheckCircle className="w-10 h-10 text-[#34D399]" />
             </div>
-            <h2 className="text-lg font-semibold text-[#FAFAFA] mb-2">All Clusters Reviewed</h2>
+            <h2 className="text-lg font-semibold text-[#FAFAFA] mb-2">
+              {total === 0 ? "No Pending Clusters" : "All Clusters Reviewed"}
+            </h2>
             <p className="text-sm text-[#71717A] max-w-md mx-auto">
-              {total} clusters processed — {mergedCount} merged, {uniqueCount} unique,{" "}
-              {skippedCount} skipped.
+              {total === 0
+                ? "There are no pending duplicate clusters to review."
+                : `${total} clusters processed — ${mergedCount} merged, ${uniqueCount} unique, ${skippedCount} skipped.`}
             </p>
           </motion.div>
         )}

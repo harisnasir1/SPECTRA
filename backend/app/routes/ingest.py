@@ -1,12 +1,87 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.repositories.Sdata_repo import get_products_by_ids, get_products_without_embeddings
+from app.repositories.Sdata_repo import get_products_by_ids, get_products_without_embeddings, bulk_insert_products
 from app.repositories.embedding_repo import bulk_insert_embeddings
 from app.services.clip_service import CLIPService
 from app.services.duplicate_service import detect_duplicates
 
 ingest_bp = Blueprint('ingest', __name__)
 clip = CLIPService()
+
+REQUIRED_FIELDS = ['title', 'brand', 'description', 'price', 'category', 'gender', 'product_url', 'product_type', 'condition', 'image']
+
+
+def _validate_products(items: list) -> tuple[list, list]:
+    """
+    Returns (valid_items, errors).
+    Each error is { index, field, message }.
+    """
+    valid, errors = [], []
+    for i, item in enumerate(items):
+        row_errors = []
+        for field in REQUIRED_FIELDS:
+            if not item.get(field) and item.get(field) != 0:
+                row_errors.append(field)
+        if row_errors:
+            errors.append({'index': i, 'missing_fields': row_errors})
+        else:
+            valid.append(item)
+    return valid, errors
+
+
+@ingest_bp.route('/products', methods=['POST'])
+@jwt_required()
+def ingest_products():
+    user_id = get_jwt_identity()
+    body = request.get_json(silent=True)
+
+    if not isinstance(body, list) or len(body) == 0:
+        return jsonify({'error': 'Request body must be a non-empty array of products'}), 400
+
+    valid_items, errors = _validate_products(body)
+
+    if not valid_items:
+        print("this is here")
+        return jsonify({'error': 'No valid products found', 'validation_errors': errors}), 422
+
+    # Insert products + images
+    products = bulk_insert_products(user_id, valid_items)
+
+    # Generate CLIP embeddings in batches
+    records = []
+    for i in range(0, len(products), BATCH_SIZE):
+        batch_products = products[i:i + BATCH_SIZE]
+        urls = [p.images[0].Url for p in batch_products]
+        texts = [clip.build_text_input(p) for p in batch_products]
+
+        image_vectors = clip.encode_images_batch(urls)
+        text_vectors = clip.encode_texts_batch(texts)
+
+        for product, img_vec, txt_vec in zip(batch_products, image_vectors, text_vectors):
+            records.append({
+                'SdataId': product.Id,
+                'UserId': user_id,
+                'ImageVector': img_vec,
+                'TextVector': txt_vec,
+            })
+   
+    bulk_insert_embeddings(records)
+
+    # Only scan the newly inserted products as seeds — pgvector still
+    # searches across all existing products for matches
+    new_product_ids = [str(p.Id) for p in products]
+    new_clusters = detect_duplicates(user_id, product_ids=new_product_ids)
+
+    response = {
+        'inserted': len(products),
+        'skipped': len(errors),
+        'new_clusters': new_clusters,
+        'products': [p.to_dict() for p in products],
+    }
+    if errors:
+        response['validation_errors'] = errors
+
+    return jsonify(response), 201
 
 @ingest_bp.route('/test', methods=['POST'])
 def Test():
@@ -73,6 +148,8 @@ def sync_embeddings():
         text_vectors = clip.encode_texts_batch(texts)
 
         for product, img_vec, txt_vec in zip(batch, image_vectors, text_vectors):
+            if img_vec is None:
+                continue
             records.append({
                 'SdataId': product.Id,
                 'UserId': user_id,

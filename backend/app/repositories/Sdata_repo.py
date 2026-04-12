@@ -1,7 +1,62 @@
 import uuid
 from app.extensions import db
 from app.models.product import Product
+from app.models.product_image import ProductImage
+from app.models.product_variant import ProductVariant
 from app.models.embedding import Embedding
+
+
+def bulk_insert_products(user_id: str, products_data: list[dict]) -> list[Product]:
+    """
+    Insert multiple products and their images in a single flush.
+    Each item in products_data must already be validated.
+    Returns the list of persisted Product objects (committed).
+    """
+    inserted = []
+    for data in products_data:
+        product = Product(
+            UserId=uuid.UUID(user_id),
+            Title=data['title'],
+            Brand=data['brand'],
+            Description=data['description'],
+            Price=int(data['price']),
+            Category=data['category'],
+            Gender=data['gender'],
+            ProductUrl=data['product_url'],
+            ProductType=data['product_type'],
+            Condition=data['condition'],
+            Sku=data.get('sku') or None,
+            ConditionGrade=data.get('condition_grade') or None,
+            Status='Uncategorized',
+        )
+        db.session.add(product)
+        db.session.flush()  # get product.Id before inserting images
+
+        images = [{'url': data['image'], 'priority': 1}]
+        for idx, url in enumerate(data.get('extra_images', []), start=2):
+            images.append({'url': url, 'priority': idx})
+
+        for img in images:
+            db.session.add(ProductImage(
+                ProductId=product.Id,
+                SdataId=product.Id,
+                Url=img['url'],
+                Priority=img['priority'],
+            ))
+
+        for variant in data.get('variants', []):
+            db.session.add(ProductVariant(
+                SdataId=product.Id,
+                Size=variant['size'],
+                SKU=variant['sku'],
+                Price=variant['price'],
+                InStock=variant['in_stock'],
+            ))
+
+        inserted.append(product)
+
+    db.session.commit()
+    return inserted
 
 
 def get_products_by_ids(id1, id2):

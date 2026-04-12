@@ -15,6 +15,13 @@ def bulk_insert_embeddings(records: list[dict]) -> int:
     return len(embeddings)
 
 
+def get_embeddings_by_ids(product_ids: list) -> list:
+    """Fetch embeddings for a specific list of product IDs."""
+    if not product_ids:
+        return []
+    return db.session.query(Embedding).filter(Embedding.SdataId.in_(product_ids)).all()
+
+
 def get_embeddings_by_user(user_id) -> list:
     """
     Fetch embeddings for a user, excluding products already assigned

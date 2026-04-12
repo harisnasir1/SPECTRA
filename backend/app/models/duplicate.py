@@ -16,8 +16,8 @@ class DuplicatePair(db.Model):
 
     @staticmethod
     def build_score_key(id_a, id_b):
-        a, b = sorted([str(id_a).replace('-', ''), str(id_b).replace('-', '')])
-        return f"{a}{b}"
+        a, b = sorted([str(id_a), str(id_b)])
+        return f"{a}|{b}"
     
     @staticmethod
     def build_score_entry(image_sim, text_sim, final_score):

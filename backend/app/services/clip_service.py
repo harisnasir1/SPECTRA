@@ -68,23 +68,45 @@ class CLIPService:
 
         return vector.cpu().numpy().flatten().tolist()
 
-    def _download_image(self, url: str) -> Image.Image:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return Image.open(BytesIO(response.content)).convert('RGB')
+    def _download_image(self, url: str) -> Image.Image | None:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content)).convert('RGB')
+        except Exception as e:
+            print(f"[CLIP] skipping image, download failed ({url}): {e}")
+            return None
 
-    def encode_images_batch(self, image_urls: list[str]) -> list[list[float]]:
-        """Download images in parallel then encode in a single forward pass."""
+    def encode_images_batch(self, image_urls: list[str]) -> list[list[float] | None]:
+        """
+        Download images in parallel then encode the successful ones in a single
+        forward pass. Returns a list aligned with image_urls — None for any URL
+        that failed to download or open.
+        """
         with ThreadPoolExecutor() as executor:
             images = list(executor.map(self._download_image, image_urls))
 
-        tensors = torch.stack([self.preprocess(img) for img in images]).to(self.device)
+        # Separate good images and remember their original positions
+        good_indices = [i for i, img in enumerate(images) if img is not None]
+        if not good_indices:
+            return [None] * len(image_urls)
+
+        tensors = torch.stack(
+            [self.preprocess(images[i]) for i in good_indices]
+        ).to(self.device)
 
         with torch.no_grad():
             vectors = self.model.encode_image(tensors)
 
         vectors = vectors / vectors.norm(dim=-1, keepdim=True)
-        return vectors.cpu().numpy().tolist()
+        vector_list = vectors.cpu().numpy().tolist()
+
+        # Re-align results with the original input list
+        result = [None] * len(image_urls)
+        for out_idx, orig_idx in enumerate(good_indices):
+            result[orig_idx] = vector_list[out_idx]
+
+        return result
 
     def encode_texts_batch(self, texts: list[str]) -> list[list[float]]:
         """Encode multiple texts in a single forward pass."""

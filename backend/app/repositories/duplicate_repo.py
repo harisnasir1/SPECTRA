@@ -48,6 +48,57 @@ def find_similar_embeddings(user_id, current_sdata_id, image_vector, text_vector
     ]
 
 
+def find_similar_embeddings_in(
+    current_sdata_id, image_vector, text_vector, candidate_ids: list[str], threshold=0.93
+) -> list[dict]:
+    """
+    Same as find_similar_embeddings but restricts matches to candidate_ids only.
+    Used after ingest to compare new products only against each other.
+    """
+    if not candidate_ids:
+        return []
+
+    pg_array = '{' + ','.join(str(cid) for cid in candidate_ids) + '}'
+
+    sql = text("""
+        SELECT
+            e2."SdataId",
+            (1 - (e2."ImageVector" <=> e1."ImageVector")) AS image_sim,
+            (1 - (e2."TextVector"  <=> e1."TextVector"))  AS text_sim,
+            (
+                0.6 * (1 - (e2."ImageVector" <=> e1."ImageVector")) +
+                0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
+            ) AS combined_score
+        FROM "Embeddings" e1
+        JOIN "Embeddings" e2 ON e2."SdataId" != e1."SdataId"
+        JOIN "Sdata" s ON s."Id" = e2."SdataId"
+        WHERE e1."SdataId" = CAST(:current_id AS uuid)
+          AND e2."SdataId" = ANY(CAST(:candidate_ids AS uuid[]))
+          AND (s."Status" IS NULL OR s."Status" != 'duplicate')
+          AND (
+                0.6 * (1 - (e2."ImageVector" <=> e1."ImageVector")) +
+                0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
+              ) > :threshold
+        ORDER BY combined_score DESC
+    """)
+
+    rows = db.session.execute(sql, {
+        'current_id':    str(current_sdata_id),
+        'candidate_ids': pg_array,
+        'threshold':     threshold,
+    }).fetchall()
+
+    return [
+        {
+            'sdata_id':    str(row.SdataId),
+            'image_sim':   float(row.image_sim),
+            'text_sim':    float(row.text_sim),
+            'final_score': float(row.combined_score),
+        }
+        for row in rows
+    ]
+
+
 def find_existing_duplicate_pair(user_id, product_ids: list[str]):
     """
     Return the first pending DuplicatePairs row whose ProductIds array
