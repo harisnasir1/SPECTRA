@@ -20,11 +20,14 @@ def find_similar_embeddings(user_id, current_sdata_id, image_vector, text_vector
             0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
         ) AS combined_score
     FROM "Embeddings" e1
+    JOIN "Sdata" s1 ON s1."Id" = e1."SdataId"
     JOIN "Embeddings" e2 ON e2."UserId" = e1."UserId"
-    JOIN "Sdata" s ON s."Id" = e2."SdataId"
+    JOIN "Sdata" s2 ON s2."Id" = e2."SdataId"
     WHERE e1."SdataId" = CAST(:current_id AS uuid)
       AND e2."SdataId" != e1."SdataId"
-      AND (s."Status" IS NULL OR s."Status" != 'duplicate')
+      AND s2."Brand"    ILIKE s1."Brand"
+      AND s2."Category" ILIKE s1."Category"
+      AND (s2."Status" IS NULL OR s2."Status" != 'duplicate')
       AND (
             0.6 * (1 - (e2."ImageVector" <=> e1."ImageVector")) +
             0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
@@ -70,11 +73,14 @@ def find_similar_embeddings_in(
                 0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
             ) AS combined_score
         FROM "Embeddings" e1
+        JOIN "Sdata" s1 ON s1."Id" = e1."SdataId"
         JOIN "Embeddings" e2 ON e2."SdataId" != e1."SdataId"
-        JOIN "Sdata" s ON s."Id" = e2."SdataId"
+        JOIN "Sdata" s2 ON s2."Id" = e2."SdataId"
         WHERE e1."SdataId" = CAST(:current_id AS uuid)
           AND e2."SdataId" = ANY(CAST(:candidate_ids AS uuid[]))
-          AND (s."Status" IS NULL OR s."Status" != 'duplicate')
+          AND s2."Brand"    ILIKE s1."Brand"
+          AND s2."Category" ILIKE s1."Category"
+          AND (s2."Status" IS NULL OR s2."Status" != 'duplicate')
           AND (
                 0.6 * (1 - (e2."ImageVector" <=> e1."ImageVector")) +
                 0.4 * (1 - (e2."TextVector"  <=> e1."TextVector"))
