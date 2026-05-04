@@ -263,8 +263,10 @@ export function ProductsPage() {
   // Image search modal
   const [modalOpen, setModalOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [imageResults, setImageResults] = useState<Product[] | null>(null);
+  const [imageSearchError, setImageSearchError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch filter options once
@@ -310,30 +312,42 @@ export function ProductsPage() {
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setImageResults(null);
+    setImageSearchError(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (!file || !file.type.startsWith("image/")) return;
+    setSelectedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
     setImageResults(null);
+    setImageSearchError(null);
   };
 
-  const handleFindSimilar = () => {
-    if (!previewUrl) return;
+  const handleFindSimilar = async () => {
+    if (!selectedFile) return;
     setIsSearching(true);
-    setTimeout(() => {
-      setIsSearching(false);
+    setImageSearchError(null);
+    try {
+      const res = await api.searchByImage(selectedFile);
+      setImageResults(res.products.map(toProduct));
       setModalOpen(false);
-    }, 500);
+    } catch (err: unknown) {
+      setImageSearchError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const clearImageSearch = () => {
     setImageResults(null);
     setPreviewUrl(null);
+    setSelectedFile(null);
+    setImageSearchError(null);
     setCurrentPage(1);
     setPendingSearch("");
     setSearch("");
@@ -715,7 +729,11 @@ export function ProductsPage() {
                   </p>
                 </div>
 
-                <div className="flex gap-2.5 mt-5">
+                {imageSearchError && (
+                  <p className="mt-3 text-[12px] text-[#F87171] text-center">{imageSearchError}</p>
+                )}
+
+                <div className="flex gap-2.5 mt-4">
                   <button
                     onClick={() => setModalOpen(false)}
                     className="flex-1 py-2.5 rounded-xl text-[13px] font-medium text-[#71717A] bg-[#18181B] border border-[#1F1F23] hover:bg-[#1F1F23] transition-colors"
@@ -726,7 +744,7 @@ export function ProductsPage() {
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     onClick={handleFindSimilar}
-                    disabled={!previewUrl || isSearching}
+                    disabled={!selectedFile || isSearching}
                     className="flex-1 py-2.5 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     {isSearching ? (

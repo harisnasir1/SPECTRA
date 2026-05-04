@@ -37,27 +37,23 @@ class CLIPService:
 
         print(f"[CLIP] Model loaded on {self.device}")
 
-    def encode_image(self, image_url: str):
-        """Download image from URL and return a 768-dim vector as a list of floats"""
-        # Download the image bytes
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-
-        # Open as PIL image, convert to RGB (CLIP expects RGB, some images are RGBA/grayscale)
-        image = Image.open(BytesIO(response.content)).convert('RGB')
-
-        # Preprocess: resize, center crop, normalize — whatever ViT-L-14 expects
-        # unsqueeze(0) adds a batch dimension: [3, 224, 224] → [1, 3, 224, 224]
-        image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
-
-        # No gradient tracking — we're not training, just extracting features
+    def encode_image_from_pil(self, image: Image.Image) -> list[float]:
+        """Encode a PIL Image directly (no download). Returns a 768-dim vector."""
+        image_tensor = self.preprocess(image.convert('RGB')).unsqueeze(0).to(self.device)
         with torch.no_grad():
             vector = self.model.encode_image(image_tensor)
-
-        # L2 normalize — required for cosine similarity to work correctly
         vector = vector / vector.norm(dim=-1, keepdim=True)
+        return vector.cpu().numpy().flatten().tolist()
 
-        # Convert: torch tensor → numpy array → flat list of floats (pgvector needs this)
+    def encode_image(self, image_url: str):
+        """Download image from URL and return a 768-dim vector as a list of floats"""
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        image = Image.open(BytesIO(response.content)).convert('RGB')
+        image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            vector = self.model.encode_image(image_tensor)
+        vector = vector / vector.norm(dim=-1, keepdim=True)
         return vector.cpu().numpy().flatten().tolist()
 
     def encode_text(self, text: str):

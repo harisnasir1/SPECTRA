@@ -35,6 +35,7 @@ export interface ApiProduct {
   hasEmbedding: boolean;
   isMaster: boolean;
   pendingClusterId: number | null;
+  imageSimilarity?: number;
 }
 
 export interface ApiProductDetail extends ApiProduct {
@@ -177,6 +178,25 @@ export const api = {
       `/duplicates/${clusterId}/dismiss`,
       { method: 'POST' }
     ),
+
+  searchByImage: async (file: File, limit = 20): Promise<{ products: ApiProduct[]; total: number }> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const form = new FormData();
+    form.append('image', file);
+    const res = await fetch(`${BASE_URL}/products/search-by-image?limit=${limit}`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (res.status === 401) { clearToken(); window.location.href = '/'; }
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(e.error || res.statusText);
+    }
+    return res.json();
+  },
 
   searchClusters: (q: string) =>
     request<{ clusters: ApiResolverCluster[] }>(`/duplicates/search?q=${encodeURIComponent(q)}`),
