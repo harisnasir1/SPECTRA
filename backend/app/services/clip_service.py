@@ -20,13 +20,18 @@ class CLIPService:
         if self._initialized:
             return
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+         self.device = "cuda"
+        elif torch.backends.mps.is_available():
+         self.device = "mps"
+        else:
+         self.device = "cpu"
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(
             'ViT-L-14',
-            pretrained='laion2b_s32b_b82k'
+            pretrained='laion2b_s32b_b82k',
+            device=self.device,
         )
         self.tokenizer = open_clip.get_tokenizer('ViT-L-14')
-        self.model.to(self.device)
         self.model.eval()
         self._initialized = True
 

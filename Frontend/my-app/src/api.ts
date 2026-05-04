@@ -6,6 +6,14 @@ export interface ApiProductImage {
   priority: number | null;
 }
 
+export interface ApiProductVariant {
+  id: number;
+  size: string;
+  sku: string;
+  price: number;
+  inStock: boolean;
+}
+
 export interface ApiProduct {
   id: string;
   title: string;
@@ -22,7 +30,14 @@ export interface ApiProduct {
   conditionGrade: string | null;
   createdAt: string;
   images: ApiProductImage[];
+  variants: ApiProductVariant[];
+  variantCount: number;
   hasEmbedding: boolean;
+  isMaster: boolean;
+}
+
+export interface ApiProductDetail extends ApiProduct {
+  mergedCount: number;
 }
 
 export interface ApiScoreEntry {
@@ -127,6 +142,9 @@ export const api = {
 
   getProductFilters: () =>
     request<{ brands: string[]; productTypes: string[]; category: string[] }>('/products/filters'),
+
+  getProduct: (id: string) =>
+    request<ApiProductDetail>(`/products/${id}`),
 
   getDuplicates: (page = 1, perPage = 1) => {
     const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
