@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = 'http://localhost:5001/api';
 
 export interface ApiProductImage {
   id: number;
@@ -128,8 +128,36 @@ export const api = {
   getProductFilters: () =>
     request<{ brands: string[]; productTypes: string[]; category: string[] }>('/products/filters'),
 
-  getDuplicates: () =>
-    request<{ clusters: ApiResolverCluster[]; total: number }>('/duplicates/'),
+  getDuplicates: (page = 1, perPage = 1) => {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    return request<{ clusters: ApiResolverCluster[]; total: number; page: number; per_page: number; pages: number }>(
+      `/duplicates/?${params}`
+    );
+  },
+
+  mergeDuplicates: (clusterId: number, products: { id: string; is_master: boolean }[]) =>
+    request<{ masterId: string; title: string; brand: string; mergedCount: number }>(
+      '/duplicates/merge',
+      {
+        method: 'POST',
+        body: JSON.stringify({ cluster_id: clusterId, products }),
+      }
+    ),
+
+  removeProductFromCluster: (clusterId: number, productId: string) =>
+    request<{ clusterId: number; status: string; remainingProductIds?: string[] }>(
+      `/duplicates/${clusterId}/remove-product`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ product_id: productId }),
+      }
+    ),
+
+  dismissCluster: (clusterId: number) =>
+    request<{ clusterId: number; status: string }>(
+      `/duplicates/${clusterId}/dismiss`,
+      { method: 'POST' }
+    ),
 
   ingestProducts: (products: object[]) =>
     request<{

@@ -148,14 +148,56 @@ def add_duplicate_pair(user_id, product_ids: list, scores: dict) -> DuplicatePai
     return pair
 
 
-def get_pending_clusters(user_id) -> list[DuplicatePair]:
-    """Return all pending DuplicatePairs for a user, newest first."""
-    return (
+def get_pending_clusters(user_id, page: int = 1, per_page: int = 10) -> tuple[list[DuplicatePair], int]:
+    """Return paginated pending DuplicatePairs for a user, newest first."""
+    query = (
         db.session.query(DuplicatePair)
         .filter(
             DuplicatePair.UserId == user_id,
             DuplicatePair.Status == 'pending',
         )
         .order_by(DuplicatePair.CreatedAt.desc())
-        .all()
     )
+    total = query.count()
+    pairs = query.offset((page - 1) * per_page).limit(per_page).all()
+    return pairs, total
+
+
+def get_cluster_by_id(cluster_id: int, user_id) -> DuplicatePair | None:
+    """Fetch a single DuplicatePair by ID, scoped to the user."""
+    return (
+        db.session.query(DuplicatePair)
+        .filter(
+            DuplicatePair.Id == cluster_id,
+            DuplicatePair.UserId == user_id,
+        )
+        .first()
+    )
+
+
+def get_clusters_containing_any(user_id, product_ids: list[str], exclude_cluster_id: int) -> list[DuplicatePair]:
+    """
+    Return all other pending clusters that overlap with product_ids.
+    Used after a merge to clean up stale clusters referencing absorbed products.
+    """
+    if not product_ids:
+        return []
+
+    pg_array = '{' + ','.join(str(pid) for pid in product_ids) + '}'
+
+    sql = text("""
+        SELECT "Id"
+        FROM "DuplicatePairs"
+        WHERE "UserId" = CAST(:user_id AS uuid)
+          AND "Status" = 'pending'
+          AND "Id" != :exclude_id
+          AND "ProductIds" && CAST(:product_ids AS uuid[])
+    """)
+
+    rows = db.session.execute(sql, {
+        'user_id':     str(user_id),
+        'exclude_id':  exclude_cluster_id,
+        'product_ids': pg_array,
+    }).fetchall()
+
+    return [db.session.get(DuplicatePair, row.Id) for row in rows]

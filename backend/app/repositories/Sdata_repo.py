@@ -100,8 +100,12 @@ def get_products_without_embeddings(limit=10):
     )
 
 
-def get_products_paginated(user_id, page=1, per_page=20, brand=None,q=None,type=None):
-    query = db.session.query(Product).filter(Product.UserId == user_id)
+def get_products_paginated(user_id, page=1, per_page=20, brand=None, q=None, type=None):
+    query = (
+        db.session.query(Product)
+        .filter(Product.UserId == user_id)
+        .filter(Product.Status != 'duplicate')
+    )
 
     if brand:
         query = query.filter(Product.Brand.ilike(f'%{brand}%'))
@@ -110,10 +114,10 @@ def get_products_paginated(user_id, page=1, per_page=20, brand=None,q=None,type=
         query = query.filter(Product.Brand.ilike(f'%{q}%') | Product.Title.ilike(f'%{q}%'))
 
     if type:
-        query = query.filter(Product.ProductType.ilike(f'%{type}%') )
+        query = query.filter(Product.ProductType.ilike(f'%{type}%'))
 
     total = query.count()
-    products = query.offset((page - 1) * per_page).limit(per_page).all()
+    products = query.order_by(Product.CreatedAt.desc()).offset((page - 1) * per_page).limit(per_page).all()
 
     return products, total
 

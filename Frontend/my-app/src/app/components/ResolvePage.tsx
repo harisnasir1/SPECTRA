@@ -114,28 +114,56 @@ function ProductCard({
 
 /* ── Main page ── */
 
+const PER_PAGE = 1;
+
 export function ResolvePage() {
   const [clusters, setClusters] = useState<ApiResolverCluster[]>([]);
+  const [clusterIndex, setClusterIndex] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalClusters, setTotalClusters] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [mergedCount, setMergedCount] = useState(0);
   const [uniqueCount, setUniqueCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [masterId, setMasterId] = useState<string | null>(null);
   const [markedUniqueIds, setMarkedUniqueIds] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadPage = async (p: number) => {
+    setPageLoading(true);
+    try {
+      const res = await api.getDuplicates(p, PER_PAGE);
+      setClusters(res.clusters);
+      setClusterIndex(0);
+      setPage(p);
+      setHasMore(p < res.pages);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load page');
+    } finally {
+      setPageLoading(false);
+    }
+  };
 
   useEffect(() => {
-    api.getDuplicates()
-      .then((res) => setClusters(res.clusters))
+    api.getDuplicates(1, PER_PAGE)
+      .then((res) => {
+        setClusters(res.clusters);
+        setTotalClusters(res.total);
+        setHasMore(1 < res.pages);
+        setPage(1);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const cluster = clusters[currentIndex];
-  const total = clusters.length;
-  const isDone = currentIndex >= total;
+  const cluster = clusters[clusterIndex];
+  const processedCount = mergedCount + uniqueCount + skippedCount;
+  const isDone = !loading && !pageLoading && clusterIndex >= clusters.length;
 
   const remainingProducts = cluster?.products.filter((p) => !markedUniqueIds.has(p.id)) ?? [];
   const effectiveMaster =
@@ -144,10 +172,18 @@ export function ResolvePage() {
       : remainingProducts[0]?.id ?? null;
   const canMerge = remainingProducts.length >= 2;
 
-  const advance = () => {
+  const advance = async () => {
     setMasterId(null);
     setMarkedUniqueIds(new Set());
-    if (currentIndex < total) setCurrentIndex((i) => i + 1);
+    setActionError(null);
+    const nextIndex = clusterIndex + 1;
+    if (nextIndex < clusters.length) {
+      setClusterIndex(nextIndex);
+    } else if (hasMore) {
+      await loadPage(page + 1);
+    } else {
+      setClusterIndex(nextIndex);
+    }
   };
 
   const handleToggleUnique = (productId: string) => {
@@ -163,26 +199,53 @@ export function ResolvePage() {
     });
   };
 
-  const handleMerge = () => {
-    console.log("Merge cluster", cluster?.clusterId, "master:", effectiveMaster, "remaining:", remainingProducts.map((p) => p.id));
-    setMergedCount((c) => c + 1);
-    advance();
+  const handleMerge = async () => {
+    if (!cluster || !effectiveMaster || !canMerge || actionLoading) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      for (const uid of markedUniqueIds) {
+        await api.removeProductFromCluster(cluster.clusterId, uid);
+      }
+      const products = remainingProducts.map((p) => ({
+        id: p.id,
+        is_master: p.id === effectiveMaster,
+      }));
+      await api.mergeDuplicates(cluster.clusterId, products);
+      setMergedCount((c) => c + 1);
+      await advance();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Merge failed');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleMarkClusterUnique = () => {
-    setUniqueCount((c) => c + 1);
-    advance();
+  const handleMarkClusterUnique = async () => {
+    if (!cluster || actionLoading) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await api.dismissCluster(cluster.clusterId);
+      setUniqueCount((c) => c + 1);
+      await advance();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to dismiss cluster');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
+    if (actionLoading || pageLoading) return;
     setSkippedCount((c) => c + 1);
-    advance();
+    await advance();
   };
 
-  if (loading) {
+  if (loading || pageLoading) {
     return (
       <div className="max-w-[1200px] mx-auto px-6 py-8 flex items-center justify-center h-64">
-        <p className="text-sm text-[#52525B]">Loading clusters…</p>
+        <p className="text-sm text-[#52525B]">{loading ? 'Loading clusters…' : 'Loading next page…'}</p>
       </div>
     );
   }
@@ -217,12 +280,12 @@ export function ResolvePage() {
           <div className="flex-1 bg-[#1F1F23] rounded-full h-1.5 overflow-hidden">
             <motion.div
               className="h-full bg-[#38BDF8] rounded-full"
-              animate={{ width: total > 0 ? `${(currentIndex / total) * 100}%` : "0%" }}
+              animate={{ width: totalClusters > 0 ? `${(processedCount / totalClusters) * 100}%` : "0%" }}
               transition={{ duration: 0.4 }}
             />
           </div>
           <span className="text-xs text-[#52525B] font-mono min-w-[50px] text-right">
-            {currentIndex}/{total}
+            {processedCount}/{totalClusters}
           </span>
         </div>
         <div className="flex gap-5">
@@ -294,40 +357,56 @@ export function ResolvePage() {
             {/* Action buttons */}
             <div className="grid grid-cols-3 gap-3">
               <motion.button
-                whileHover={canMerge ? { scale: 1.01 } : {}}
-                whileTap={canMerge ? { scale: 0.99 } : {}}
-                onClick={canMerge ? handleMerge : undefined}
+                whileHover={canMerge && !actionLoading ? { scale: 1.01 } : {}}
+                whileTap={canMerge && !actionLoading ? { scale: 0.99 } : {}}
+                onClick={handleMerge}
+                disabled={!canMerge || actionLoading}
                 title={!canMerge ? "Need at least 2 products to merge" : undefined}
                 className={`py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 transition-colors ${
-                  canMerge
+                  canMerge && !actionLoading
                     ? "bg-[#FAFAFA] text-[#09090B] hover:bg-[#E4E4E7]"
                     : "bg-[#18181B] text-[#3F3F46] border border-[#1F1F23] cursor-not-allowed"
                 }`}
               >
                 <GitMerge className="w-4 h-4" />
-                Merge{canMerge ? ` ${remainingProducts.length} Products` : " (need ≥2)"}
+                {actionLoading ? "Merging…" : canMerge ? `Merge ${remainingProducts.length} Products` : "Merge (need ≥2)"}
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
+                whileHover={!actionLoading ? { scale: 1.01 } : {}}
+                whileTap={!actionLoading ? { scale: 0.99 } : {}}
                 onClick={handleMarkClusterUnique}
-                className="py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 bg-[#34D399]/[0.1] text-[#34D399] border border-[#34D399]/20 hover:bg-[#34D399]/[0.15] transition-colors"
+                disabled={actionLoading}
+                className={`py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 border transition-colors ${
+                  actionLoading
+                    ? "bg-[#18181B] text-[#3F3F46] border-[#1F1F23] cursor-not-allowed"
+                    : "bg-[#34D399]/10 text-[#34D399] border-[#34D399]/20 hover:bg-[#34D399]/15"
+                }`}
               >
                 <ShieldCheck className="w-4 h-4" />
-                All Unique
+                {actionLoading ? "…" : "All Unique"}
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
+                whileHover={!actionLoading ? { scale: 1.01 } : {}}
+                whileTap={!actionLoading ? { scale: 0.99 } : {}}
                 onClick={handleSkip}
-                className="py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 bg-[#18181B] text-[#71717A] border border-[#1F1F23] hover:bg-[#1F1F23] hover:text-[#A1A1AA] transition-colors"
+                disabled={actionLoading}
+                className={`py-3 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-2 border transition-colors ${
+                  actionLoading
+                    ? "bg-[#18181B] text-[#3F3F46] border-[#1F1F23] cursor-not-allowed"
+                    : "bg-[#18181B] text-[#71717A] border-[#1F1F23] hover:bg-[#1F1F23] hover:text-[#A1A1AA]"
+                }`}
               >
                 <SkipForward className="w-4 h-4" />
                 Skip
               </motion.button>
             </div>
+
+            {/* Inline action error */}
+            {actionError && (
+              <p className="mt-3 text-[12px] text-[#F87171] text-center">{actionError}</p>
+            )}
           </motion.div>
         ) : (
           <motion.div
@@ -339,12 +418,12 @@ export function ResolvePage() {
               <CheckCircle className="w-10 h-10 text-[#34D399]" />
             </div>
             <h2 className="text-lg font-semibold text-[#FAFAFA] mb-2">
-              {total === 0 ? "No Pending Clusters" : "All Clusters Reviewed"}
+              {totalClusters === 0 ? "No Pending Clusters" : "All Clusters Reviewed"}
             </h2>
             <p className="text-sm text-[#71717A] max-w-md mx-auto">
-              {total === 0
+              {totalClusters === 0
                 ? "There are no pending duplicate clusters to review."
-                : `${total} clusters processed — ${mergedCount} merged, ${uniqueCount} unique, ${skippedCount} skipped.`}
+                : `${totalClusters} clusters processed — ${mergedCount} merged, ${uniqueCount} unique, ${skippedCount} skipped.`}
             </p>
           </motion.div>
         )}
