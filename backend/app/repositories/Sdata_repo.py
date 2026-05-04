@@ -6,14 +6,31 @@ from app.models.product_variant import ProductVariant
 from app.models.embedding import Embedding
 
 
-def bulk_insert_products(user_id: str, products_data: list[dict]) -> list[Product]:
+def bulk_insert_products(user_id: str, products_data: list[dict]) -> tuple[list[Product], list[str]]:
     """
     Insert multiple products and their images in a single flush.
     Each item in products_data must already be validated.
-    Returns the list of persisted Product objects (committed).
+    Returns (inserted_products, skipped_urls) — skipped when productUrl already exists.
     """
+    incoming_urls = [d['product_url'] for d in products_data]
+    existing_urls = {
+        row[0]
+        for row in db.session.query(Product.ProductUrl)
+        .filter(
+            Product.UserId == uuid.UUID(user_id),
+            Product.ProductUrl.in_(incoming_urls),
+        )
+        .all()
+    }
+
     inserted = []
+    skipped_urls = []
+
     for data in products_data:
+        if data['product_url'] in existing_urls:
+            skipped_urls.append(data['product_url'])
+            continue
+
         product = Product(
             UserId=uuid.UUID(user_id),
             Title=data['title'],
@@ -30,7 +47,7 @@ def bulk_insert_products(user_id: str, products_data: list[dict]) -> list[Produc
             Status='Uncategorized',
         )
         db.session.add(product)
-        db.session.flush()  # get product.Id before inserting images
+        db.session.flush()
 
         images = [{'url': data['image'], 'priority': 1}]
         for idx, url in enumerate(data.get('extra_images', []), start=2):
@@ -54,9 +71,10 @@ def bulk_insert_products(user_id: str, products_data: list[dict]) -> list[Produc
             ))
 
         inserted.append(product)
+        existing_urls.add(data['product_url'])  # guard against duplicates within the same batch
 
     db.session.commit()
-    return inserted
+    return inserted, skipped_urls
 
 
 def get_products_by_ids(id1, id2):

@@ -183,6 +183,7 @@ export const api = {
       skipped: number;
       new_clusters: number;
       products: ApiProduct[];
+      skipped_urls?: string[];
       validation_errors?: { index: number; missing_fields: string[] }[];
     }>('/ingest/products', {
       method: 'POST',

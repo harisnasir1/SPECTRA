@@ -64,6 +64,7 @@ interface IngestResult {
   inserted: number;
   skipped: number;
   new_clusters: number;
+  skipped_urls?: string[];
 }
 
 /* ── CSV parser (handles quoted fields) ── */
@@ -210,7 +211,7 @@ export function IngestPage() {
     try {
       const payload = parsed.valid.map(toApiPayload);
         const res = await api.ingestProducts(payload);
-        setResult({ inserted: res.inserted, skipped: res.skipped, new_clusters: res.new_clusters });
+        setResult({ inserted: res.inserted, skipped: res.skipped, new_clusters: res.new_clusters, skipped_urls: res.skipped_urls });
         setStage("done");
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Upload failed");
@@ -478,6 +479,19 @@ export function IngestPage() {
                   {result.new_clusters} new duplicate cluster{result.new_clusters > 1 ? "s" : ""} found — review them in the{" "}
                   <span className="text-[#FAFAFA] font-medium">Resolve</span> tab
                 </p>
+              </div>
+            )}
+
+            {result.skipped_urls && result.skipped_urls.length > 0 && (
+              <div className="bg-[#111113] border border-[#F87171]/15 rounded-xl px-4 py-3">
+                <p className="text-[12px] text-[#F87171] font-medium mb-2">
+                  {result.skipped_urls.length} product{result.skipped_urls.length !== 1 ? 's' : ''} skipped — URL already in catalogue
+                </p>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {result.skipped_urls.map((url) => (
+                    <p key={url} className="text-[11px] text-[#52525B] font-mono truncate">{url}</p>
+                  ))}
+                </div>
               </div>
             )}
 

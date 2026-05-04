@@ -50,8 +50,16 @@ def ingest_products():
         print("this is here")
         return jsonify({'error': 'No valid products found', 'validation_errors': errors}), 422
 
-    # Insert products + images
-    products = bulk_insert_products(user_id, valid_items)
+    # Insert products + images (skips any whose productUrl already exists)
+    products, skipped_urls = bulk_insert_products(user_id, valid_items)
+
+    if not products:
+        return jsonify({
+            'error': 'All products were skipped — their product URLs already exist in your catalogue',
+            'skipped': len(valid_items) + len(errors),
+            'skipped_urls': skipped_urls,
+            'validation_errors': errors if errors else [],
+        }), 409
 
     # Generate CLIP embeddings in batches
     records = []
@@ -70,20 +78,21 @@ def ingest_products():
                 'ImageVector': img_vec,
                 'TextVector': txt_vec,
             })
-   
+
+    
     bulk_insert_embeddings(records)
 
-    # Only scan the newly inserted products as seeds — pgvector still
-    # searches across all existing products for matches
     new_product_ids = [str(p.Id) for p in products]
     new_clusters = detect_duplicates(user_id, product_ids=new_product_ids)
-
+    print(f"new cluster =>{new_clusters}")
     response = {
         'inserted': len(products),
-        'skipped': len(errors),
+        'skipped': len(errors) + len(skipped_urls),
         'new_clusters': new_clusters,
         'products': [p.to_dict() for p in products],
     }
+    if skipped_urls:
+        response['skipped_urls'] = skipped_urls
     if errors:
         response['validation_errors'] = errors
 

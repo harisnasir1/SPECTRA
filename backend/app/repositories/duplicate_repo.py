@@ -3,7 +3,7 @@ from app.extensions import db
 from app.models.duplicate import DuplicatePair
 
 
-def find_similar_embeddings(user_id, current_sdata_id, image_vector, text_vector, threshold=0.93) -> list[dict]:
+def find_similar_embeddings(user_id, current_sdata_id, image_vector, text_vector, threshold=0.80) -> list[dict]:
     """
     Query pgvector for products where the combined similarity score > threshold.
     combined_score = 0.6 * image_similarity + 0.4 * text_similarity
@@ -52,7 +52,7 @@ def find_similar_embeddings(user_id, current_sdata_id, image_vector, text_vector
 
 
 def find_similar_embeddings_in(
-    current_sdata_id, image_vector, text_vector, candidate_ids: list[str], threshold=0.93
+    current_sdata_id, image_vector, text_vector, candidate_ids: list[str], threshold=0.85
 ) -> list[dict]:
     """
     Same as find_similar_embeddings but restricts matches to candidate_ids only.
