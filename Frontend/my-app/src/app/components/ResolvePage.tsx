@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GitMerge,
@@ -7,6 +8,8 @@ import {
   CheckCircle,
   Crown,
   Package,
+  Search,
+  X,
 } from "lucide-react";
 import { api, type ApiResolverCluster, type ApiResolverProduct } from "../../api";
 
@@ -117,6 +120,9 @@ function ProductCard({
 const PER_PAGE = 1;
 
 export function ResolvePage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [clusters, setClusters] = useState<ApiResolverCluster[]>([]);
   const [clusterIndex, setClusterIndex] = useState(0);
   const [page, setPage] = useState(1);
@@ -126,6 +132,12 @@ export function ResolvePage() {
   const [pageLoading, setPageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Pinned cluster — set via URL param or search
+  const [pinnedCluster, setPinnedCluster] = useState<ApiResolverCluster | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [mergedCount, setMergedCount] = useState(0);
   const [uniqueCount, setUniqueCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
@@ -133,6 +145,41 @@ export function ResolvePage() {
   const [markedUniqueIds, setMarkedUniqueIds] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // On mount, load cluster from URL param if present
+  useEffect(() => {
+    const clusterId = searchParams.get('cluster');
+    if (clusterId) {
+      api.getCluster(Number(clusterId))
+        .then(setPinnedCluster)
+        .catch(() => setSearchError(`Cluster #${clusterId} not found`));
+    }
+  }, [searchParams]);
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const res = await api.searchClusters(searchQuery.trim());
+      if (res.clusters.length === 0) {
+        setSearchError('No clusters found for that product name');
+      } else {
+        setPinnedCluster(res.clusters[0]);
+      }
+    } catch {
+      setSearchError('Search failed');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const clearPinned = () => {
+    setPinnedCluster(null);
+    setSearchQuery('');
+    setSearchError(null);
+    navigate('/resolve', { replace: true });
+  };
 
   const loadPage = async (p: number) => {
     setPageLoading(true);
@@ -162,10 +209,11 @@ export function ResolvePage() {
   }, []);
 
   const cluster = clusters[clusterIndex];
+  const activeCluster = pinnedCluster ?? cluster;
   const processedCount = mergedCount + uniqueCount + skippedCount;
-  const isDone = !loading && !pageLoading && clusterIndex >= clusters.length;
+  const isDone = !loading && !pageLoading && !pinnedCluster && clusterIndex >= clusters.length;
 
-  const remainingProducts = cluster?.products.filter((p) => !markedUniqueIds.has(p.id)) ?? [];
+  const remainingProducts = activeCluster?.products.filter((p) => !markedUniqueIds.has(p.id)) ?? [];
   const effectiveMaster =
     masterId && !markedUniqueIds.has(masterId)
       ? masterId
@@ -200,20 +248,20 @@ export function ResolvePage() {
   };
 
   const handleMerge = async () => {
-    if (!cluster || !effectiveMaster || !canMerge || actionLoading) return;
+    if (!activeCluster || !effectiveMaster || !canMerge || actionLoading) return;
     setActionLoading(true);
     setActionError(null);
     try {
       for (const uid of markedUniqueIds) {
-        await api.removeProductFromCluster(cluster.clusterId, uid);
+        await api.removeProductFromCluster(activeCluster.clusterId, uid);
       }
       const products = remainingProducts.map((p) => ({
         id: p.id,
         is_master: p.id === effectiveMaster,
       }));
-      await api.mergeDuplicates(cluster.clusterId, products);
+      await api.mergeDuplicates(activeCluster.clusterId, products);
       setMergedCount((c) => c + 1);
-      await advance();
+      if (pinnedCluster) { clearPinned(); } else { await advance(); }
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Merge failed');
     } finally {
@@ -222,13 +270,13 @@ export function ResolvePage() {
   };
 
   const handleMarkClusterUnique = async () => {
-    if (!cluster || actionLoading) return;
+    if (!activeCluster || actionLoading) return;
     setActionLoading(true);
     setActionError(null);
     try {
-      await api.dismissCluster(cluster.clusterId);
+      await api.dismissCluster(activeCluster.clusterId);
       setUniqueCount((c) => c + 1);
-      await advance();
+      if (pinnedCluster) { clearPinned(); } else { await advance(); }
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to dismiss cluster');
     } finally {
@@ -239,7 +287,7 @@ export function ResolvePage() {
   const handleSkip = async () => {
     if (actionLoading || pageLoading) return;
     setSkippedCount((c) => c + 1);
-    await advance();
+    if (pinnedCluster) { clearPinned(); } else { await advance(); }
   };
 
   if (loading || pageLoading) {
@@ -266,12 +314,61 @@ export function ResolvePage() {
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <h1 className="text-[22px] font-semibold text-[#FAFAFA] tracking-tight">
-          Resolve Duplicates
-        </h1>
-        <p className="text-sm text-[#71717A] mt-1">
-          Review detected clusters — select a master product, then merge duplicates or mark as unique
-        </p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-[22px] font-semibold text-[#FAFAFA] tracking-tight">
+              Resolve Duplicates
+            </h1>
+            <p className="text-sm text-[#71717A] mt-1">
+              Review detected clusters — select a master product, then merge duplicates or mark as unique
+            </p>
+          </div>
+
+          {/* Search bar */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
+            className="flex items-center gap-2"
+          >
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#3F3F46]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Find cluster by product name…"
+                className="pl-9 pr-3 py-2 w-[260px] bg-[#111113] border border-[#1F1F23] rounded-lg text-[13px] text-[#FAFAFA] placeholder-[#3F3F46] focus:outline-none focus:border-[#27272A] transition-colors"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={searchLoading || !searchQuery.trim()}
+              className="px-3 py-2 rounded-lg text-[13px] font-medium bg-[#1F1F23] text-[#A1A1AA] hover:bg-[#27272A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {searchLoading ? '…' : 'Go'}
+            </button>
+          </form>
+        </div>
+
+        {/* Pinned cluster banner */}
+        {pinnedCluster && (
+          <div className="mt-3 flex items-center gap-3 bg-[#FBBF24]/[0.08] border border-[#FBBF24]/20 rounded-lg px-3 py-2">
+            <span className="text-[12px] text-[#FBBF24]">
+              Viewing Cluster #{pinnedCluster.clusterId}
+            </span>
+            <button
+              onClick={clearPinned}
+              className="ml-auto flex items-center gap-1 text-[11px] text-[#71717A] hover:text-[#FAFAFA] transition-colors"
+            >
+              <X className="w-3 h-3" />
+              Back to queue
+            </button>
+          </div>
+        )}
+
+        {/* Search error */}
+        {searchError && !pinnedCluster && (
+          <p className="mt-2 text-[12px] text-[#F87171]">{searchError}</p>
+        )}
       </motion.div>
 
       {/* Progress */}
@@ -303,9 +400,9 @@ export function ResolvePage() {
 
       {/* Main content */}
       <AnimatePresence mode="wait">
-        {!isDone && cluster ? (
+        {!isDone && activeCluster ? (
           <motion.div
-            key={cluster.clusterId}
+            key={activeCluster.clusterId}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
@@ -315,10 +412,10 @@ export function ResolvePage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-[12px] font-mono font-semibold text-[#F87171] bg-[#F87171]/[0.08] px-2.5 py-1 rounded-md">
-                  Cluster #{cluster.clusterId}
+                  Cluster #{activeCluster.clusterId}
                 </span>
                 <span className="text-[12px] text-[#52525B]">
-                  {cluster.products.length} products
+                  {activeCluster.products.length} products
                 </span>
               </div>
               <div className="flex items-center gap-2 text-[12px] text-[#52525B]">
@@ -326,7 +423,7 @@ export function ResolvePage() {
                 <span>
                   Master:{" "}
                   <span className="text-[#D4D4D8] font-medium">
-                    {cluster.products.find((p) => p.id === effectiveMaster)?.title ?? "—"}
+                    {activeCluster.products.find((p) => p.id === effectiveMaster)?.title ?? "—"}
                   </span>
                 </span>
               </div>
@@ -335,7 +432,7 @@ export function ResolvePage() {
             {/* Scrollable product cards */}
             <div className="overflow-x-auto pb-3 mb-4 -mx-1 px-1">
               <div className="flex gap-3" style={{ width: "max-content" }}>
-                {cluster.products.map((product) => (
+                {activeCluster.products.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}

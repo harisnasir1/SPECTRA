@@ -1,11 +1,38 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import text
 from app.extensions import db
+from app.models.duplicate import DuplicatePair
+from app.models.product import Product as ProductModel
 from app.repositories.duplicate_repo import get_pending_clusters
 from app.repositories.Sdata_repo import get_products_by_id_list
 from app.services.merge_service import merge_cluster, remove_product_from_cluster, dismiss_cluster
 
 duplicates_bp = Blueprint('duplicates', __name__)
+
+
+def _pair_to_dict(pair: DuplicatePair) -> dict:
+    product_map = get_products_by_id_list(pair.ProductIds)
+    products = []
+    for pid in pair.ProductIds:
+        p = product_map.get(str(pid))
+        if not p:
+            continue
+        first_image = next(
+            (img.Url for img in sorted(p.images, key=lambda x: x.Priority or 0)),
+            None,
+        )
+        products.append({
+            'id':          str(p.Id),
+            'title':       p.Title,
+            'brand':       p.Brand,
+            'description': p.Description,
+            'gender':      p.Gender,
+            'sku':         p.Sku,
+            'productType': p.ProductType,
+            'image':       first_image,
+        })
+    return {'clusterId': pair.Id, 'scores': pair.Scores, 'products': products}
 
 
 @duplicates_bp.route('/', methods=['GET'])
@@ -22,35 +49,7 @@ def get_duplicate_clusters():
     pairs, total = get_pending_clusters(user_id, page, per_page)
     pages = (total + per_page - 1) // per_page if per_page else 1
 
-    result = []
-    for pair in pairs:
-        product_map = get_products_by_id_list(pair.ProductIds)
-
-        products = []
-        for pid in pair.ProductIds:
-            p = product_map.get(str(pid))
-            if not p:
-                continue
-            first_image = next(
-                (img.Url for img in sorted(p.images, key=lambda x: x.Priority or 0)),
-                None
-            )
-            products.append({
-                'id':          str(p.Id),
-                'title':       p.Title,
-                'brand':       p.Brand,
-                'description': p.Description,
-                'gender':      p.Gender,
-                'sku':         p.Sku,
-                'productType': p.ProductType,
-                'image':       first_image,
-            })
-
-        result.append({
-            'clusterId': pair.Id,
-            'scores':    pair.Scores,
-            'products':  products,
-        })
+    result = [_pair_to_dict(pair) for pair in pairs]
 
     return jsonify({
         'clusters': result,
@@ -59,6 +58,69 @@ def get_duplicate_clusters():
         'per_page': per_page,
         'pages':    pages,
     }), 200
+
+
+@duplicates_bp.route('/search', methods=['GET'])
+@jwt_required()
+def search_clusters():
+    user_id = get_jwt_identity()
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'clusters': []}), 200
+
+    matching = (
+        db.session.query(ProductModel)
+        .filter(
+            ProductModel.UserId == user_id,
+            ProductModel.Title.ilike(f'%{q}%'),
+        )
+        .limit(30)
+        .all()
+    )
+    if not matching:
+        return jsonify({'clusters': []}), 200
+
+    product_ids = [p.Id for p in matching]
+    pg_array = '{' + ','.join(str(pid) for pid in product_ids) + '}'
+
+    rows = db.session.execute(
+        text("""
+            SELECT DISTINCT "Id"
+            FROM "DuplicatePairs"
+            WHERE "UserId" = CAST(:user_id AS uuid)
+              AND "Status" = 'pending'
+              AND "ProductIds" && CAST(:product_ids AS uuid[])
+            ORDER BY "Id"
+            LIMIT 10
+        """),
+        {'user_id': str(user_id), 'product_ids': pg_array},
+    ).fetchall()
+
+    clusters = []
+    for row in rows:
+        pair = db.session.get(DuplicatePair, row.Id)
+        if pair:
+            clusters.append(_pair_to_dict(pair))
+
+    return jsonify({'clusters': clusters}), 200
+
+
+@duplicates_bp.route('/<int:cluster_id>', methods=['GET'])
+@jwt_required()
+def get_cluster(cluster_id):
+    user_id = get_jwt_identity()
+    pair = (
+        db.session.query(DuplicatePair)
+        .filter(
+            DuplicatePair.Id == cluster_id,
+            DuplicatePair.UserId == user_id,
+            DuplicatePair.Status == 'pending',
+        )
+        .first()
+    )
+    if not pair:
+        return jsonify({'error': 'Cluster not found'}), 404
+    return jsonify(_pair_to_dict(pair)), 200
 
 
 @duplicates_bp.route('/merge', methods=['POST'])

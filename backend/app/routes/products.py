@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models.product import Product
 from app.models.duplicate import DuplicatePair
 from app.repositories.Sdata_repo import get_products_paginated, get_distinct_filters
+from app.repositories.duplicate_repo import get_pending_cluster_ids_for_products
 
 products_bp = Blueprint('products', __name__)
 
@@ -21,9 +22,11 @@ def get_products():
 
     products, total = get_products_paginated(user_id, page, per_page, brand, q, type_)
 
-    # Batch-fetch which product IDs are winners in a resolved cluster
     product_ids = [p.Id for p in products]
+
+    # Batch-fetch which product IDs are winners in a resolved cluster
     master_ids = set()
+    cluster_map: dict = {}
     if product_ids:
         rows = (
             db.session.query(DuplicatePair.WinnerId)
@@ -35,15 +38,17 @@ def get_products():
             .all()
         )
         master_ids = {str(r.WinnerId) for r in rows}
+        cluster_map = get_pending_cluster_ids_for_products(user_id, product_ids)
 
     result = []
     for p in products:
         d = p.to_dict()
-        d['images']        = [img.to_dict() for img in sorted(p.images, key=lambda x: x.Priority or 0)]
-        d['variants']      = [v.to_dict() for v in p.variants]
-        d['variantCount']  = len(p.variants)
-        d['hasEmbedding']  = p.embedding is not None
-        d['isMaster']      = str(p.Id) in master_ids
+        d['images']           = [img.to_dict() for img in sorted(p.images, key=lambda x: x.Priority or 0)]
+        d['variants']         = [v.to_dict() for v in p.variants]
+        d['variantCount']     = len(p.variants)
+        d['hasEmbedding']     = p.embedding is not None
+        d['isMaster']         = str(p.Id) in master_ids
+        d['pendingClusterId'] = cluster_map.get(str(p.Id))
         result.append(d)
 
     return jsonify({

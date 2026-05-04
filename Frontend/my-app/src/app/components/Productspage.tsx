@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -14,6 +15,7 @@ import {
   CheckCircle,
   XCircle,
   ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import { api, type ApiProduct, type ApiProductDetail } from "../../api";
 
@@ -29,6 +31,7 @@ interface Product {
   hasEmbedding: boolean;
   variantCount: number;
   isMaster: boolean;
+  pendingClusterId: number | null;
 }
 
 function toProduct(p: ApiProduct): Product {
@@ -42,6 +45,7 @@ function toProduct(p: ApiProduct): Product {
     hasEmbedding: p.hasEmbedding,
     variantCount: p.variantCount ?? 0,
     isMaster: p.isMaster ?? false,
+    pendingClusterId: p.pendingClusterId ?? null,
   };
 }
 
@@ -241,6 +245,7 @@ const PER_PAGE_OPTIONS = [10, 20, 50, 100];
 /* ── Component ── */
 
 export function ProductsPage() {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -501,6 +506,18 @@ export function ProductsPage() {
                     <GitMerge className="w-2.5 h-2.5" />
                     Merged
                   </span>
+                )}
+                {product.pendingClusterId != null && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/resolve?cluster=${product.pendingClusterId}`);
+                    }}
+                    className="shrink-0 flex items-center gap-1 text-[10px] font-semibold text-[#FBBF24] bg-[#FBBF24]/[0.08] px-1.5 py-0.5 rounded hover:bg-[#FBBF24]/[0.15] transition-colors"
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    Cluster #{product.pendingClusterId}
+                  </button>
                 )}
                 {product.variantCount > 0 && (
                   <span className="shrink-0 text-[10px] font-medium text-[#71717A] bg-[#1F1F23] px-1.5 py-0.5 rounded">

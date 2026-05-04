@@ -175,6 +175,29 @@ def get_cluster_by_id(cluster_id: int, user_id) -> DuplicatePair | None:
     )
 
 
+def get_pending_cluster_ids_for_products(user_id, product_ids: list) -> dict:
+    """
+    Returns {product_id_str: cluster_id} for any of product_ids that belong
+    to a pending cluster. Used to badge products in the product list.
+    """
+    if not product_ids:
+        return {}
+    pg_array = '{' + ','.join(str(pid) for pid in product_ids) + '}'
+    sql = text("""
+        SELECT dp."Id", unnest(dp."ProductIds") AS pid
+        FROM "DuplicatePairs" dp
+        WHERE dp."UserId" = CAST(:user_id AS uuid)
+          AND dp."Status" = 'pending'
+          AND dp."ProductIds" && CAST(:product_ids AS uuid[])
+    """)
+    rows = db.session.execute(sql, {
+        'user_id':     str(user_id),
+        'product_ids': pg_array,
+    }).fetchall()
+    wanted = {str(pid) for pid in product_ids}
+    return {str(row.pid): row.Id for row in rows if str(row.pid) in wanted}
+
+
 def get_clusters_containing_any(user_id, product_ids: list[str], exclude_cluster_id: int) -> list[DuplicatePair]:
     """
     Return all other pending clusters that overlap with product_ids.

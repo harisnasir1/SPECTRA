@@ -34,6 +34,7 @@ export interface ApiProduct {
   variantCount: number;
   hasEmbedding: boolean;
   isMaster: boolean;
+  pendingClusterId: number | null;
 }
 
 export interface ApiProductDetail extends ApiProduct {
@@ -176,6 +177,12 @@ export const api = {
       `/duplicates/${clusterId}/dismiss`,
       { method: 'POST' }
     ),
+
+  searchClusters: (q: string) =>
+    request<{ clusters: ApiResolverCluster[] }>(`/duplicates/search?q=${encodeURIComponent(q)}`),
+
+  getCluster: (clusterId: number) =>
+    request<ApiResolverCluster>(`/duplicates/${clusterId}`),
 
   ingestProducts: (products: object[]) =>
     request<{
